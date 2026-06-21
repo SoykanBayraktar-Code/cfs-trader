@@ -61,6 +61,6 @@ telegram:
   enabled: true                   # token + chat_id secrets.env'den okunur
 
 learner:
-  enabled: false                  # Faz 3'te açılır (yeterli canlı işlem birikince)
+  enabled: true                   # AKTİF — ama n<min_samples iken etkisiz (güvenli); 20 örneklemde kötü kombinasyonu kısar
   min_samples: 20
   suppress_below_expectancy: -0.10   # (rejim×yön×sinyal-tipi) bu R'nin altındaysa o kombinasyonu kıs
