@@ -43,11 +43,14 @@ def main():
     cfg = get_cfg()
     cfg._d["dry_run"] = True       # offline test config.yaml mode/dry_run'dan BAĞIMSIZ — hep paper mantığı
     cfg._d["mode"] = "testnet"
+    cfg._d["risk"]["max_concurrent"] = 1   # test config'ten BAĞIMSIZ (canlıda 3 olsa da senaryo 1 pozisyon)
     learner = Learner(cfg, None)  # enabled=False
     db = os.path.join(tempfile.mkdtemp(), "t.db")
     store = Store(db)
     b = FakeBinance(100.0)
-    day = "2026-06-20"
+    # flatten gerçek günü (_utcday) kullanır; day_state aynı güne baksın diye sabit tarih DEĞİL bugünü al
+    from cfs_trader.loop import _utcday
+    day = _utcday()
     eq = 50.0
     n_ok = n_fail = 0
 

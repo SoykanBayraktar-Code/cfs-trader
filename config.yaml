@@ -28,6 +28,16 @@ signals:
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
 
+exits:
+  # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.
+  trailing_enabled: true
+  breakeven_at_r: 0.8        # +0.8R'ye ulaşınca SL → girişe (breakeven). Zararı sıfırlar.
+  breakeven_buffer_pct: 0.05 # SL'yi girişin %0.05 lehine koy (round-trip fee'yi karşılar)
+  trail_after_r: 1.0         # +1.0R sonrası trailing devreye girer
+  trail_distance_r: 0.7      # SL = tepe − 0.7R (peak'i takip eder, asla gevşemez)
+  min_sl_move_pct: 0.05      # SL en az bu kadar (%) iyileşmezse taşıma (gereksiz emir/fee yok)
+  notify_moves: true         # breakeven/trailing geçişlerinde Telegram bildir
+
 paths:
   db: data/trader.db
   log: data/trader.log

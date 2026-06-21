@@ -217,5 +217,12 @@ class Binance:
     def get_algo_order(self, symbol, algo_id):
         return self._signed("GET", "/fapi/v1/algoOrder", {"symbol": symbol, "algoId": algo_id})
 
+    def cancel_algo_order(self, symbol, algo_id):
+        """Tek bir algo emrini (SL/TP) iptal et — cancel_all'dan farkı: diğer emirlere DOKUNMAZ.
+        Trailing'de eski SL'yi iptal ederken TP'yi korumak için şart. dry_run'da no-op."""
+        if self.dry_run:
+            return {"dry_run": True, "algoId": algo_id}
+        return self._signed("DELETE", "/fapi/v1/algoOrder", {"symbol": symbol, "algoId": algo_id})
+
     def user_trades(self, symbol, limit=10):
         return self._signed("GET", "/fapi/v1/userTrades", {"symbol": symbol, "limit": limit})

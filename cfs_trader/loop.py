@@ -4,7 +4,7 @@ Tek servis (systemd): poll_seconds'ta bir reconcile (çıkış/kill-switch), loo
 """
 import time
 import threading
-from . import signals, risk, executor, position_manager
+from . import signals, risk, executor, position_manager, trailing
 from .cfg import get as get_cfg
 from .binance import Binance
 from .store import Store
@@ -101,7 +101,13 @@ def scan_tick(ctx):
 
 
 def poll_tick(ctx):
-    """Açık pozisyon çıkışlarını kontrol et (SL/TP doldu mu)."""
+    """Açık pozisyonları yönet (Aşama 1: breakeven/trailing SL) → sonra çıkışları kontrol et."""
+    # 1) trailing/breakeven: SL'leri lehte taşı (reconcile'dan ÖNCE — güncel SL ile çıkış değerlendirilsin)
+    try:
+        trailing.manage(ctx.cfg, ctx.binance, ctx.store, ctx.notifier, log=lambda m: log(ctx, m))
+    except Exception as e:
+        log(ctx, f"[poll] trailing hatası: {e!r}")
+    # 2) çıkış tespiti (SL/TP doldu mu)
     closed = position_manager.reconcile(ctx.cfg, ctx.binance, ctx.store, ctx.notifier)
     for sym, reason in closed:
         log(ctx, f"[poll] çıkış {sym} → {reason}")
