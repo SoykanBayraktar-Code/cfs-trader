@@ -2,9 +2,23 @@
 """Momentum/oi_surge saf-mantık testi (ağsız): seviye hesabı, yön çıkarımı, sınıf filtresi."""
 import os
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from cfs_trader import signals
+from cfs_trader import signals, risk
+from cfs_trader.cfg import get as get_cfg
+from cfs_trader.store import Store
+from cfs_trader.signals import Candidate
+from cfs_trader.learner import Learner
+
+
+class FakeBinance:
+    def __init__(self, price):
+        self.price = price; self.dry_run = True
+    def min_notional(self, s): return 5.0
+    def round_qty(self, s, q): return round(q, 3)
+    def round_price(self, s, p): return round(p, 2)
+    def mark_price(self, s): return self.price
 
 
 def main():
@@ -40,6 +54,35 @@ def main():
     chk("🟢 ATESLENIYOR ∈ [ATESLENIYOR,KOSUYOR]", signals._class_ok("🟢 ATESLENIYOR", ["ATESLENIYOR", "KOSUYOR"]))
     chk("🔴 TUKENMIS/tuzak ∉ izinli", not signals._class_ok("🔴 TUKENMIS/tuzak", ["ATESLENIYOR", "KOSUYOR"]))
     chk("None etiket → False", not signals._class_ok(None, ["SESSIZ"]))
+
+    # ---- risk_mult: momentum yarım boyut ----
+    cfg = get_cfg()
+    cfg._d["dry_run"] = True
+    cfg._d["mode"] = "testnet"
+    cfg._d["risk"]["max_concurrent"] = 2
+    learner = Learner(cfg, None)
+    b = FakeBinance(100.0)
+    from cfs_trader.loop import _utcday
+    day = _utcday()
+
+    def mk(risk_mult=1.0, min_ts=0.0, tape="CONFIRM", tscore=5.0):
+        return Candidate(symbol="TESTUSDT", side="LONG", entry=100, stop=98, tp=110, rr=2.5,
+                         score=5, atr_pct=2.0, status="MOMENTUM", regime="RANGE", bias="BOTH",
+                         tape_verdict=tape, tape_score=tscore, risk_mult=risk_mult, min_tape_score=min_ts)
+
+    s_full = Store(os.path.join(tempfile.mkdtemp(), "f.db"))
+    g_full = risk.gate(cfg, s_full, b, mk(risk_mult=1.0), 50.0, 100.0, day, learner)
+    s_half = Store(os.path.join(tempfile.mkdtemp(), "h.db"))
+    g_half = risk.gate(cfg, s_half, b, mk(risk_mult=0.5), 50.0, 100.0, day, learner)
+    chk(f"risk_mult=0.5 → yarım risk ({g_half.sizing.risk_usdt} ≈ {g_full.sizing.risk_usdt}/2)",
+        g_full.ok and g_half.ok and abs(g_half.sizing.risk_usdt - g_full.sizing.risk_usdt/2) < 0.3)
+
+    # ---- min_tape_score: CONFIRM ama skor düşük → RED ----
+    s2 = Store(os.path.join(tempfile.mkdtemp(), "t.db"))
+    g_low = risk.gate(cfg, s2, b, mk(min_ts=4.5, tape="CONFIRM", tscore=3.2), 50.0, 100.0, day, learner)
+    chk("min_tape_score=4.5, skor 3.2 → RED", (not g_low.ok) and "skoru zayıf" in g_low.reason)
+    g_hi = risk.gate(cfg, s2, b, mk(min_ts=4.5, tape="CONFIRM", tscore=5.0), 50.0, 100.0, day, learner)
+    chk("min_tape_score=4.5, skor 5.0 → GEÇER", g_hi.ok)
 
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)

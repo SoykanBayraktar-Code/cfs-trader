@@ -10,7 +10,7 @@ market: futures        # USD-M perpetual
 risk:
   leverage: 5
   risk_per_trade_pct: 50.0          # bakiyenin %'si — SL'de kaybedilecek TAVAN (margin+SL ile sınırlı, ~%7-15 pratik)
-  max_concurrent: 3
+  max_concurrent: 2               # 06-21: 3 eşzamanlı, kill-switch'i aşırttı (−25 vs −16 limit) → 2'ye çekildi
   daily_max_loss_pct: 25          # gün içi toplam zarar → o gün DUR + düzleştir (ertesi gün sıfırlanır)
   max_consecutive_losses: 5       # üst üste N zarar → DUR + Telegram, manuel devam
   min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
@@ -37,8 +37,10 @@ momentum:
   sl_atr_mult: 1.5           # stop = giriş ∓ 1.5×ATR (momentum'da yapısal pullback yok)
   tp_rr: 2.5                 # tp = giriş ± 2.5R — trailing üstünü toplar
   max_atr_pct: 8.0           # bu kaynaklar için ATR tavanı (TA-setup %6'dan gevşek; 1.5×8=%12 SL = max_sl sınırı)
-  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ, ERKEN]}      # GEC/ISINMIS (kovalama) hariç
-  momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR, KOSUYOR]}            # TUKENMIS (tuzak) hariç
+  # oi_surge: pre-pump birikim — sağlam, tam boyut, standart tape CONFIRM
+  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ, ERKEN], risk_mult: 1.0, min_tape_score: 0.0}
+  # momentum_scan: SIKILAŞTIRILDI (06-21'de 0/3 kaybetti) — yalnız ATESLENIYOR + yarım risk + güçlü tape (>=4.5)
+  momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR], risk_mult: 0.5, min_tape_score: 4.5}
 
 exits:
   # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.

@@ -35,7 +35,10 @@ def size_position(cfg, binance, cand, equity, mark):
     risk_cap = equity * r["risk_per_trade_pct"] / 100.0          # SL'de kaybedilecek tavan
     desired_notional = risk_cap / sl_dist                        # bu kaybı verecek notional
     max_notional = min(r["leverage"] * equity, r["max_position_notional_usdt"])
-    notional = min(desired_notional, max_notional)
+    # kaynak-bazlı çarpan NOTIONAL'a uygulanır (risk = notional*sl_dist). %50 risk + dar SL'de
+    # pozisyon hep notional-tavanına takılır → çarpanı risk_cap'e koymak ETKİSİZ kalırdı (momentum=0.5 → yarım boyut).
+    risk_mult = getattr(cand, "risk_mult", 1.0) or 1.0
+    notional = min(desired_notional, max_notional) * risk_mult
 
     min_notional = binance.min_notional(cand.symbol)
     if notional < min_notional:
@@ -79,6 +82,11 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
     # tape CONFIRM kapısı
     if cfg.signals.get("require_tape_confirm", True) and cand.tape_verdict != "CONFIRM":
         return GateResult(False, f"tape {cand.tape_verdict} (CONFIRM değil)")
+
+    # kaynak-bazlı SIKI tape eşiği (momentum: CONFIRM yetmez, skor da yüksek olmalı)
+    min_ts = getattr(cand, "min_tape_score", 0.0) or 0.0
+    if min_ts and cand.tape_score < min_ts:
+        return GateResult(False, f"tape skoru zayıf {cand.tape_score:.1f} < {min_ts} (sıkı eşik)")
 
     # learner baskısı (Faz 3 — enabled değilse atlanır)
     if learner is not None:

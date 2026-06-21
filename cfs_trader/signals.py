@@ -25,6 +25,8 @@ class Candidate:
     bias: str
     tape_verdict: str = "?"
     tape_score: float = 0.0
+    risk_mult: float = 1.0       # kaynak-bazlı risk çarpanı (momentum=0.5 → yarım boyut)
+    min_tape_score: float = 0.0  # bu adayın geçmesi için gereken min tape skoru (momentum sıkı eşik)
 
 
 @contextlib.contextmanager
@@ -100,7 +102,7 @@ def _class_ok(text, keywords):
     return any(k.upper() in t for k in keywords)
 
 
-def _build_mom_candidate(symbol, side, score, m, regime, signal_type):
+def _build_mom_candidate(symbol, side, score, m, regime, signal_type, risk_mult=1.0, min_tape_score=0.0):
     """setup_levels'tan px+atr al → ATR-tabanlı Candidate kur. _engine_cwd İÇİNDE çağrılmalı. None=ele."""
     import setup_levels
     try:
@@ -117,7 +119,8 @@ def _build_mom_candidate(symbol, side, score, m, regime, signal_type):
     entry, stop, tp, rr = lv
     return Candidate(symbol=symbol, side=side, entry=entry, stop=stop, tp=tp, rr=rr,
                      score=int(round(score)), atr_pct=float(atr_pct), status=signal_type,
-                     regime=regime["regime"], bias=regime["bias"])
+                     regime=regime["regime"], bias=regime["bias"],
+                     risk_mult=float(risk_mult), min_tape_score=float(min_tape_score))
 
 
 def scan_momentum(cfg, regime):
@@ -136,7 +139,8 @@ def scan_momentum(cfg, regime):
             side = "LONG"   # momentum_scan yalnız boğa-breakout üretir
             if side not in cfg.signals["directions"]:
                 continue
-            c = _build_mom_candidate(row["sym"], side, row.get("score", 0), m, regime, "MOMENTUM")
+            c = _build_mom_candidate(row["sym"], side, row.get("score", 0), m, regime, "MOMENTUM",
+                                     risk_mult=mc.get("risk_mult", 0.5), min_tape_score=mc.get("min_tape_score", 4.5))
             if c:
                 cands.append(c)
             if len(cands) >= cap:
@@ -160,7 +164,8 @@ def scan_oi_surge(cfg, regime):
             side = _oi_direction(row.get("taker"), row.get("fund"))
             if side is None or side not in cfg.signals["directions"]:
                 continue
-            c = _build_mom_candidate(row["sym"], side, row.get("score", 0), m, regime, "OI-SURGE")
+            c = _build_mom_candidate(row["sym"], side, row.get("score", 0), m, regime, "OI-SURGE",
+                                     risk_mult=oc.get("risk_mult", 1.0), min_tape_score=oc.get("min_tape_score", 0.0))
             if c:
                 cands.append(c)
             if len(cands) >= cap:
