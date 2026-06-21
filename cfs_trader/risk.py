@@ -79,11 +79,17 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
     if store.open_count() >= r["max_concurrent"]:
         return GateResult(False, f"max eşzamanlı pozisyon ({r['max_concurrent']}) dolu")
 
-    # tape CONFIRM kapısı
-    if cfg.signals.get("require_tape_confirm", True) and cand.tape_verdict != "CONFIRM":
-        return GateResult(False, f"tape {cand.tape_verdict} (CONFIRM değil)")
+    # tape kapısı (KATKI-TEMELLİ GEVŞETME): CONFIRM her zaman geçer; ek olarak CONFIRM'e yakın
+    # CAUTION'lar (score_avg >= tape_min_score) da geçer. Motor CONFIRM_SCORE=3; tape_min_score=2.7
+    # → %10 gevşek. VETO (güçlü ters akış) HER ZAMAN reddedilir (motora dokunulmaz, koruma durur).
+    if cfg.signals.get("require_tape_confirm", True):
+        tape_min = cfg.signals.get("tape_min_score", 3.0)
+        if cand.tape_verdict == "VETO":
+            return GateResult(False, "tape VETO (güçlü ters akış)")
+        if cand.tape_verdict != "CONFIRM" and cand.tape_score < tape_min:
+            return GateResult(False, f"tape {cand.tape_verdict} skor {cand.tape_score:.1f} < {tape_min}")
 
-    # kaynak-bazlı SIKI tape eşiği (momentum: CONFIRM yetmez, skor da yüksek olmalı)
+    # kaynak-bazlı SIKI tape eşiği (momentum: gevşemeden bağımsız, skor da yüksek olmalı)
     min_ts = getattr(cand, "min_tape_score", 0.0) or 0.0
     if min_ts and cand.tape_score < min_ts:
         return GateResult(False, f"tape skoru zayıf {cand.tape_score:.1f} < {min_ts} (sıkı eşik)")

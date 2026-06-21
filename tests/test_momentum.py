@@ -60,6 +60,8 @@ def main():
     cfg._d["dry_run"] = True
     cfg._d["mode"] = "testnet"
     cfg._d["risk"]["max_concurrent"] = 2
+    cfg._d["signals"]["require_tape_confirm"] = True
+    cfg._d["signals"]["tape_min_score"] = 2.7
     learner = Learner(cfg, None)
     b = FakeBinance(100.0)
     from cfs_trader.loop import _utcday
@@ -83,6 +85,20 @@ def main():
     chk("min_tape_score=4.5, skor 3.2 → RED", (not g_low.ok) and "skoru zayıf" in g_low.reason)
     g_hi = risk.gate(cfg, s2, b, mk(min_ts=4.5, tape="CONFIRM", tscore=5.0), 50.0, 100.0, day, learner)
     chk("min_tape_score=4.5, skor 5.0 → GEÇER", g_hi.ok)
+
+    # ---- gevşetilmiş tape kapısı (tape_min_score=2.7) — base aday (min_ts=0) ----
+    s3 = Store(os.path.join(tempfile.mkdtemp(), "g.db"))
+    g_conf = risk.gate(cfg, s3, b, mk(min_ts=0, tape="CONFIRM", tscore=3.5), 50.0, 100.0, day, learner)
+    chk("CONFIRM her zaman geçer", g_conf.ok)
+    s4 = Store(os.path.join(tempfile.mkdtemp(), "g2.db"))
+    g_caut_ok = risk.gate(cfg, s4, b, mk(min_ts=0, tape="CAUTION", tscore=2.8), 50.0, 100.0, day, learner)
+    chk("CAUTION skor 2.8 ≥ 2.7 → GEÇER (gevşetme)", g_caut_ok.ok)
+    s5 = Store(os.path.join(tempfile.mkdtemp(), "g3.db"))
+    g_caut_no = risk.gate(cfg, s5, b, mk(min_ts=0, tape="CAUTION", tscore=2.5), 50.0, 100.0, day, learner)
+    chk("CAUTION skor 2.5 < 2.7 → RED", (not g_caut_no.ok) and "skor" in g_caut_no.reason)
+    s6 = Store(os.path.join(tempfile.mkdtemp(), "g4.db"))
+    g_veto = risk.gate(cfg, s6, b, mk(min_ts=0, tape="VETO", tscore=4.0), 50.0, 100.0, day, learner)
+    chk("VETO yüksek skorda bile RED", (not g_veto.ok) and "VETO" in g_veto.reason)
 
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
