@@ -23,7 +23,7 @@ signals:
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler
   require_tape_confirm: true      # tape kapısı açık (CONFIRM + tape_min_score üstü CAUTION geçer; VETO hep red)
-  tape_min_score: 2.7             # CONFIRM'e yakın CAUTION eşiği — motor CONFIRM_SCORE=3'ün %10 altı (gevşetme)
+  tape_min_score: 2.2             # CONFIRM'e yakın CAUTION eşiği (motor CONFIRM_SCORE=3); 2.7→2.2 daha fazla işlem akışı
   max_tape_checks: 8              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız; anomali kaynakları eklendi)
   min_rr: 1.2                     # min risk:reward
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
