@@ -23,10 +23,22 @@ signals:
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler
   require_tape_confirm: true      # sadece tape=CONFIRM adaylar geçer
-  max_tape_checks: 6              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız)
+  max_tape_checks: 8              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız; anomali kaynakları eklendi)
   min_rr: 1.2                     # min risk:reward
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
+
+momentum:
+  # Anomali/momentum sinyal KAYNAKLARI — scan_v3'e EK. Hepsi tape CONFIRM + risk-gate + trailing'den geçer.
+  # Amaç: ani patlama / pre-pump birikim yakalamak. tape kapısı sahte/tükenmiş pump'ı eler.
+  enabled: true
+  sources: [oi_surge, momentum_scan]
+  max_per_tick: 4            # her kaynaktan tik başına en fazla aday (tape bütçesini taşırmaz)
+  sl_atr_mult: 1.5           # stop = giriş ∓ 1.5×ATR (momentum'da yapısal pullback yok)
+  tp_rr: 2.5                 # tp = giriş ± 2.5R — trailing üstünü toplar
+  max_atr_pct: 8.0           # bu kaynaklar için ATR tavanı (TA-setup %6'dan gevşek; 1.5×8=%12 SL = max_sl sınırı)
+  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ, ERKEN]}      # GEC/ISINMIS (kovalama) hariç
+  momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR, KOSUYOR]}            # TUKENMIS (tuzak) hariç
 
 exits:
   # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.

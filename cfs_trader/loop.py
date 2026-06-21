@@ -57,8 +57,12 @@ def scan_tick(ctx):
         return
 
     equity = _equity(ctx)
-    regime, cands = signals.scan(cfg)
-    log(ctx, f"[tik] rejim {regime['regime']} ({regime['bias']}) | {len(cands)} aday | eşik tape={cfg.signals.get('require_tape_confirm')}")
+    regime, cands = signals.scan_all(cfg)
+    by_src = {}
+    for c in cands:
+        by_src[c.status] = by_src.get(c.status, 0) + 1
+    src_txt = " ".join(f"{k}:{v}" for k, v in by_src.items()) or "yok"
+    log(ctx, f"[tik] rejim {regime['regime']} ({regime['bias']}) | {len(cands)} aday ({src_txt}) | eşik tape={cfg.signals.get('require_tape_confirm')}")
 
     taped = 0
     for cand in cands:
