@@ -79,6 +79,17 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
     if store.open_count() >= r["max_concurrent"]:
         return GateResult(False, f"max eşzamanlı pozisyon ({r['max_concurrent']}) dolu")
 
+    # ÇİFT-GİRİŞ KORUMASI: aynı sembolde zaten pozisyon varsa girme (DB veya borsa).
+    # Borsa kontrolü restart-kesintili yetim pozisyonları + kullanıcının manuel pozisyonlarını da korur.
+    if any(t["symbol"] == cand.symbol for t in store.open_trades()):
+        return GateResult(False, f"{cand.symbol} zaten açık (DB) — çift-giriş engellendi")
+    if not cfg.dry_run:
+        try:
+            if any(abs(float(p["positionAmt"])) > 0 for p in binance.positions(cand.symbol)):
+                return GateResult(False, f"{cand.symbol} borsada zaten açık — çift-giriş engellendi")
+        except Exception:
+            pass
+
     # tape kapısı (KATKI-TEMELLİ GEVŞETME): CONFIRM her zaman geçer; ek olarak CONFIRM'e yakın
     # CAUTION'lar (score_avg >= tape_min_score) da geçer. Motor CONFIRM_SCORE=3; tape_min_score=2.7
     # → %10 gevşek. VETO (güçlü ters akış) HER ZAMAN reddedilir (motora dokunulmaz, koruma durur).

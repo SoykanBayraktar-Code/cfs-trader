@@ -16,8 +16,8 @@ class Learner:
         self.threshold = float(lc.get("suppress_below_expectancy", -0.10))
 
     def suppressed(self, cand):
-        """(bastırıldı_mı, sebep). enabled değilse asla bastırmaz."""
-        if not self.enabled:
+        """(bastırıldı_mı, sebep). enabled değilse veya store yoksa asla bastırmaz."""
+        if not self.enabled or self.store is None:
             return False, ""
         exp, n = self.store.expectancy(cand.regime, cand.side, cand.status)
         if exp is None or n < self.min_samples:
