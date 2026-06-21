@@ -1,0 +1,16 @@
+[Unit]
+Description=cfs-trader — crypto-futures-scan otomatik execution botu
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/cfs-trader
+ExecStart=/usr/bin/python3 /root/cfs-trader/run.py
+Restart=on-failure
+RestartSec=15
+# Mod ve emir davranışı config.yaml'dan gelir (mode/dry_run). Gizli anahtarlar secrets.env'de.
+# Loglar journald'a: journalctl -u cfs-trader -f
+
+[Install]
+WantedBy=multi-user.target

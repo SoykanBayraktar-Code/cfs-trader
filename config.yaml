@@ -1,0 +1,41 @@
+# cfs-trader — tüm risk rayları + mod tek yerde.
+# DEĞİŞTİRMEDEN ÖNCE OKU: mode:live = GERÇEK PARA. dry_run:true her zaman ekstra emniyet.
+
+mode: live             # testnet | live    (live = GERÇEK PARA — AKTİF)
+dry_run: false         # true: emir GÖNDERİLMEZ (paper). false: GERÇEK EMİR — AKTİF.
+
+budget_usdt: 65.0
+market: futures        # USD-M perpetual
+
+risk:
+  leverage: 5
+  risk_per_trade_pct: 50.0          # bakiyenin %'si — SL'de kaybedilecek TAVAN (margin+SL ile sınırlı, ~%7-15 pratik)
+  max_concurrent: 3
+  daily_max_loss_pct: 25          # gün içi toplam zarar → o gün DUR + düzleştir (ertesi gün sıfırlanır)
+  max_consecutive_losses: 5       # üst üste N zarar → DUR + Telegram, manuel devam
+  min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
+  max_position_notional_usdt: 500 # 5x * 100; risk.py exchange limitiyle min alır
+  max_sl_pct: 12                  # SL bundan genişse RED — 5x'te likidasyon ~%18-20, SL dolmadan likit olmasın
+  margin_type: ISOLATED           # KESİNLİKLE isolated — cross YASAK. Set edilemezse işlem AÇILMAZ (kasa+INJ korunur)
+
+signals:
+  loop_minutes: 15
+  poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
+  directions: [LONG, SHORT]       # motordan gelen yönler
+  require_tape_confirm: true      # sadece tape=CONFIRM adaylar geçer
+  max_tape_checks: 6              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız)
+  min_rr: 1.2                     # min risk:reward
+  max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
+  engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
+
+paths:
+  db: data/trader.db
+  log: data/trader.log
+
+telegram:
+  enabled: true                   # token + chat_id secrets.env'den okunur
+
+learner:
+  enabled: false                  # Faz 3'te açılır (yeterli canlı işlem birikince)
+  min_samples: 20
+  suppress_below_expectancy: -0.10   # (rejim×yön×sinyal-tipi) bu R'nin altındaysa o kombinasyonu kıs
