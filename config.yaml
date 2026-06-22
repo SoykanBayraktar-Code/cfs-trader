@@ -11,8 +11,8 @@ risk:
   leverage: 5
   risk_per_trade_pct: 50.0          # bakiyenin %'si — SL'de kaybedilecek TAVAN (margin+SL ile sınırlı, ~%7-15 pratik)
   max_concurrent: 2               # 06-21: 3 eşzamanlı, kill-switch'i aşırttı (−25 vs −16 limit) → 2'ye çekildi
-  daily_max_loss_pct: 25          # gün içi toplam zarar → o gün DUR + düzleştir (ertesi gün sıfırlanır)
-  max_consecutive_losses: 5       # üst üste N zarar → DUR + Telegram, manuel devam
+  daily_max_loss_pct: 0           # 0 = KAPALI (kullanıcı isteğiyle günlük kill-switch kaldırıldı; eyes-open)
+  max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı; TEK kalan günlük backstop)
   min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
   max_position_notional_usdt: 500 # 5x * 100; risk.py exchange limitiyle min alır
   max_sl_pct: 12                  # SL bundan genişse RED — 5x'te likidasyon ~%18-20, SL dolmadan likit olmasın

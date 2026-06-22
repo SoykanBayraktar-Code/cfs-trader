@@ -61,7 +61,8 @@ def main():
                        "trail_after_r": 1.0, "trail_distance_r": 0.7, "min_sl_move_pct": 0.05,
                        "notify_moves": False}
     learner = Learner(cfg, None)
-    day = "2026-06-21"
+    from cfs_trader.loop import _utcday   # flatten gerçek UTC gününe yazar; sabit tarih UTC dönümünde kırılır
+    day = _utcday()
     eq = 50.0
     n_ok = n_fail = 0
 

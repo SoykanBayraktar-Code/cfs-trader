@@ -66,10 +66,11 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
     if st["halted"]:
         return GateResult(False, f"gün durduruldu ({st['halt_reason']})")
 
-    # günlük zarar kill-switch (taban = bütçe)
-    daily_limit = cfg.budget * r["daily_max_loss_pct"] / 100.0
-    if st["realized_pnl"] <= -daily_limit:
-        return GateResult(False, f"günlük zarar {st['realized_pnl']:.2f} ≤ -{daily_limit:.2f}", halt=True)
+    # günlük zarar kill-switch (taban = bütçe). daily_max_loss_pct=0 → KAPALI (kullanıcı kaldırdı).
+    if r.get("daily_max_loss_pct", 0):
+        daily_limit = cfg.budget * r["daily_max_loss_pct"] / 100.0
+        if st["realized_pnl"] <= -daily_limit:
+            return GateResult(False, f"günlük zarar {st['realized_pnl']:.2f} ≤ -{daily_limit:.2f}", halt=True)
 
     # ardışık zarar kesici
     if st["consec_losses"] >= r["max_consecutive_losses"]:

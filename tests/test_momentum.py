@@ -100,6 +100,26 @@ def main():
     g_veto = risk.gate(cfg, s6, b, mk(min_ts=0, tape="VETO", tscore=4.0), 50.0, 100.0, day, learner)
     chk("VETO yüksek skorda bile RED", (not g_veto.ok) and "VETO" in g_veto.reason)
 
+    # ---- çift-giriş guard (DB): aynı sembol zaten açıksa RED ----
+    s7 = Store(os.path.join(tempfile.mkdtemp(), "d.db"))
+    s7.open_trade(symbol="TESTUSDT", side="LONG", qty=1.0, entry=100, sl=98, tp=110, risk_usdt=5.0)
+    g_dup = risk.gate(cfg, s7, b, mk(min_ts=0, tape="CONFIRM", tscore=5.0), 50.0, 100.0, day, learner)
+    chk("aynı sembol zaten açık (DB) → RED", (not g_dup.ok) and "çift-giriş" in g_dup.reason)
+
+    # ---- günlük kill-switch KAPALI (daily_max_loss_pct=0) + ardışık 3 ----
+    cfg._d["risk"]["daily_max_loss_pct"] = 0
+    cfg._d["risk"]["max_consecutive_losses"] = 3
+    s8 = Store(os.path.join(tempfile.mkdtemp(), "k.db"))
+    s8.day_state(day)
+    s8.db.execute("UPDATE daily_state SET realized_pnl=-100, consec_losses=0 WHERE day=?", (day,)); s8.db.commit()
+    g_nokill = risk.gate(cfg, s8, b, mk(min_ts=0, tape="CONFIRM", tscore=5.0), 50.0, 100.0, day, learner)
+    chk("günlük kill-switch KAPALI: -100 zararda bile halt YOK", g_nokill.ok)
+    s9 = Store(os.path.join(tempfile.mkdtemp(), "k2.db"))
+    s9.day_state(day)
+    s9.db.execute("UPDATE daily_state SET consec_losses=3 WHERE day=?", (day,)); s9.db.commit()
+    g_consec = risk.gate(cfg, s9, b, mk(min_ts=0, tape="CONFIRM", tscore=5.0), 50.0, 100.0, day, learner)
+    chk("ardışık 3 zarar → halt", (not g_consec.ok) and g_consec.halt)
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 
