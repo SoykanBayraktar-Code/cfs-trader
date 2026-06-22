@@ -62,7 +62,7 @@ pullback_momentum:
   sl_atr_mult: 1.5           # stop = giriş − 1.5×ATR (pullback invalidasyonu)
   risk_mult: 0.5             # yarım boyut (yeni modül, doğrulanana kadar)
   max_per_tick: 3            # tik başına en fazla pullback adayı
-  min_tape_score: 3.0        # TAM CONFIRM iste (tepe-satma riskine karşı kalite)
+  min_tape_score: 2.2        # 3.0→2.2 (base ile aynı; ilk girişleri görüp ölçmek için gevşetildi)
 
 exits:
   # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.
