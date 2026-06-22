@@ -10,7 +10,7 @@ market: futures        # USD-M perpetual
 risk:
   leverage: 5
   risk_per_trade_pct: 50.0          # bakiyenin %'si — SL'de kaybedilecek TAVAN (margin+SL ile sınırlı, ~%7-15 pratik)
-  max_concurrent: 2               # 06-21: 3 eşzamanlı, kill-switch'i aşırttı (−25 vs −16 limit) → 2'ye çekildi
+  max_concurrent: 3               # 3'e çıkarıldı (günlük kill-switch kapalı, taşma riski yok); PULLBACK-MOM'a slot açar
   daily_max_loss_pct: 0           # 0 = KAPALI (kullanıcı isteğiyle günlük kill-switch kaldırıldı; eyes-open)
   max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı; TEK kalan günlük backstop)
   min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
