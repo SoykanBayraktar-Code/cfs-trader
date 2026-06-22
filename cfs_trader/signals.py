@@ -42,9 +42,17 @@ def _engine_cwd(engine_path):
         os.chdir(old_cwd)
 
 
+def _target_tp(entry, stop, side, target_rr):
+    """PTJ-tipi asimetrik hedef: aynı stop, TP = giriş ± target_rr × risk-mesafesi."""
+    risk = abs(entry - stop)
+    return entry + target_rr * risk if side == "LONG" else entry - target_rr * risk
+
+
 def scan(cfg, min_vol=30_000_000, pool=40, top=12):
-    """(regime_dict, [Candidate]) döndürür — config filtrelerini uygular (yön/RR/ATR)."""
+    """(regime_dict, [Candidate]) döndürür — config filtrelerini uygular (yön/RR/ATR).
+    target_rr>0 ise TP motorun hedefini DEĞİL, sabit R-katını hedefler (PTJ 5:1)."""
     sig = cfg.signals
+    target_rr = sig.get("target_rr", 0) or 0
     with _engine_cwd(cfg.engine_path):
         import scan_v3
         r = scan_v3.run(min_vol=min_vol, pool=pool, top=top)
@@ -53,14 +61,18 @@ def scan(cfg, min_vol=30_000_000, pool=40, top=12):
     for s in r.get("setups", []):
         if s["direction"] not in sig["directions"]:
             continue
-        if s.get("rr", 0) < sig["min_rr"]:
+        if s.get("rr", 0) < sig["min_rr"]:          # motorun DOĞAL rr'si = yapısal kalite kapısı
             continue
         if s.get("atr_pct", 99) > sig["max_atr_pct"]:
             continue
+        entry = float(s["entry"]); stop = float(s["stop"])
+        if target_rr > 0:                            # PTJ 5:1 — TP'yi sabit R-katına çek, trailing koşturur
+            tp = _target_tp(entry, stop, s["direction"], target_rr); rr = target_rr
+        else:
+            tp = float(s.get("tp2") or s.get("tp1")); rr = float(s.get("rr", 0))
         cands.append(Candidate(
-            symbol=s["symbol"], side=s["direction"],
-            entry=float(s["entry"]), stop=float(s["stop"]), tp=float(s.get("tp2") or s.get("tp1")),
-            rr=float(s.get("rr", 0)), score=int(s.get("score", 0)), atr_pct=float(s.get("atr_pct", 0)),
+            symbol=s["symbol"], side=s["direction"], entry=entry, stop=stop, tp=tp,
+            rr=rr, score=int(s.get("score", 0)), atr_pct=float(s.get("atr_pct", 0)),
             status=s.get("status", "?"), regime=regime["regime"], bias=regime["bias"],
         ))
     return regime, cands

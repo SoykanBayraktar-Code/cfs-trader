@@ -25,7 +25,8 @@ signals:
   require_tape_confirm: true      # tape kapısı açık (CONFIRM + tape_min_score üstü CAUTION geçer; VETO hep red)
   tape_min_score: 2.2             # CONFIRM'e yakın CAUTION eşiği (motor CONFIRM_SCORE=3); 2.7→2.2 daha fazla işlem akışı
   max_tape_checks: 8              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız; anomali kaynakları eklendi)
-  min_rr: 1.2                     # min risk:reward
+  min_rr: 1.2                     # motorun DOĞAL rr'si bu altındaysa setup elenir (yapısal kalite kapısı)
+  target_rr: 5.0                  # PTJ 5:1 — TP sabit 5R'ye çekilir (aynı stop, 5R hedef); trailing koşturur. 0=motor TP'si
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
 
@@ -36,7 +37,7 @@ momentum:
   sources: [oi_surge]        # momentum_scan ÇIKARILDI (0/3, tepe-satma); pullback-girişi gerekir, sonra
   max_per_tick: 4            # her kaynaktan tik başına en fazla aday (tape bütçesini taşırmaz)
   sl_atr_mult: 1.5           # stop = giriş ∓ 1.5×ATR (momentum'da yapısal pullback yok)
-  tp_rr: 2.5                 # tp = giriş ± 2.5R — trailing üstünü toplar
+  tp_rr: 5.0                 # PTJ 5:1 — tp = giriş ± 5R (trailing üstünü toplar)
   max_atr_pct: 8.0           # bu kaynaklar için ATR tavanı (TA-setup %6'dan gevşek; 1.5×8=%12 SL = max_sl sınırı)
   # oi_surge: HİPOTEZ DÜZELTMESİ (06-22, eklentiler 0/5 sonrası) — tezine uygun yalnız LONG (birikim=yükseliş),
   # yalnız SESSIZ (en saf pre-pump), TAM CONFIRM (min_tape_score 3.0, gevşek 2.2 değil), çok küçük risk (0.25).
@@ -49,8 +50,8 @@ exits:
   trailing_enabled: true
   breakeven_at_r: 0.8        # +0.8R'ye ulaşınca SL → girişe (breakeven). Zararı sıfırlar.
   breakeven_buffer_pct: 0.05 # SL'yi girişin %0.05 lehine koy (round-trip fee'yi karşılar)
-  trail_after_r: 1.0         # +1.0R sonrası trailing devreye girer
-  trail_distance_r: 0.7      # SL = tepe − 0.7R (peak'i takip eder, asla gevşemez)
+  trail_after_r: 1.5         # +1.5R sonrası trailing (5R hedefe nefes ver, erken kesme)
+  trail_distance_r: 1.0      # SL = tepe − 1.0R (runner'ı boğmaz; 5R'ye giderken pullback'lere izin)
   min_sl_move_pct: 0.05      # SL en az bu kadar (%) iyileşmezse taşıma (gereksiz emir/fee yok)
   notify_moves: true         # breakeven/trailing geçişlerinde Telegram bildir
 

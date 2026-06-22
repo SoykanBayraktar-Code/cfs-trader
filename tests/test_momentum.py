@@ -38,6 +38,10 @@ def main():
     chk(f"SHORT seviye={lv}", lv and abs(lv[1]-106)<1e-9 and abs(lv[2]-85)<1e-9)
     # atr=0 → None
     chk("atr=0 → None", signals._mom_levels(100, 0, "LONG", 1.5, 2.5) is None)
+
+    # ---- _target_tp (PTJ 5:1) ----
+    chk("LONG 5R: entry100 stop98 → tp110", abs(signals._target_tp(100, 98, "LONG", 5.0) - 110) < 1e-9)
+    chk("SHORT 5R: entry100 stop102 → tp90", abs(signals._target_tp(100, 102, "SHORT", 5.0) - 90) < 1e-9)
     # stop pozitif kalmalı: aşırı geniş sl_mult negatif stop → None
     chk("negatif stop → None", signals._mom_levels(10, 80.0, "LONG", 2.0, 2.5) is None)
 

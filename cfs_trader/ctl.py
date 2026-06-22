@@ -230,7 +230,7 @@ def cmd_scan():
     ctx = Ctx()
     cfg = ctx.cfg
     n = cfg.signals.get("max_tape_checks", 6)
-    regime, cands = signals.scan(cfg)
+    regime, cands = signals.scan_all(cfg)
     print(f"Rejim {regime['regime']} ({regime['bias']}) | {len(cands)} aday | ilk {min(n, len(cands))} tape")
     if not cands:
         print("Aday yok.")
@@ -263,7 +263,7 @@ def cmd_trade(argv):
         if ctx.store.open_count() >= cfg.risk["max_concurrent"]:
             _die("kapasite dolu (kilit altında) — işlem açılmadı", code=1)
         equity = _equity(ctx)
-        regime, cands = signals.scan(cfg)
+        regime, cands = signals.scan_all(cfg)
         n = cfg.signals.get("max_tape_checks", 6)
         print(f"Rejim {regime['regime']} ({regime['bias']}) | {len(cands)} aday")
         if not cands:
