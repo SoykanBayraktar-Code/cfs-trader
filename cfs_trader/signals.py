@@ -164,6 +164,8 @@ def scan_oi_surge(cfg, regime):
             side = _oi_direction(row.get("taker"), row.get("fund"))
             if side is None or side not in cfg.signals["directions"]:
                 continue
+            if oc.get("long_only", False) and side != "LONG":
+                continue   # oi_surge tezi = birikim→yükseliş; SHORT'lar 0/2 kaybetti
             c = _build_mom_candidate(row["sym"], side, row.get("score", 0), m, regime, "OI-SURGE",
                                      risk_mult=oc.get("risk_mult", 1.0), min_tape_score=oc.get("min_tape_score", 0.0))
             if c:

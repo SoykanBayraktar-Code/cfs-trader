@@ -33,14 +33,15 @@ momentum:
   # Anomali/momentum sinyal KAYNAKLARI — scan_v3'e EK. Hepsi tape CONFIRM + risk-gate + trailing'den geçer.
   # Amaç: ani patlama / pre-pump birikim yakalamak. tape kapısı sahte/tükenmiş pump'ı eler.
   enabled: true
-  sources: [oi_surge, momentum_scan]
+  sources: [oi_surge]        # momentum_scan ÇIKARILDI (0/3, tepe-satma); pullback-girişi gerekir, sonra
   max_per_tick: 4            # her kaynaktan tik başına en fazla aday (tape bütçesini taşırmaz)
   sl_atr_mult: 1.5           # stop = giriş ∓ 1.5×ATR (momentum'da yapısal pullback yok)
   tp_rr: 2.5                 # tp = giriş ± 2.5R — trailing üstünü toplar
   max_atr_pct: 8.0           # bu kaynaklar için ATR tavanı (TA-setup %6'dan gevşek; 1.5×8=%12 SL = max_sl sınırı)
-  # oi_surge: pre-pump birikim — sağlam, tam boyut, standart tape CONFIRM
-  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ, ERKEN], risk_mult: 1.0, min_tape_score: 0.0}
-  # momentum_scan: SIKILAŞTIRILDI (06-21'de 0/3 kaybetti) — yalnız ATESLENIYOR + yarım risk + güçlü tape (>=4.5)
+  # oi_surge: HİPOTEZ DÜZELTMESİ (06-22, eklentiler 0/5 sonrası) — tezine uygun yalnız LONG (birikim=yükseliş),
+  # yalnız SESSIZ (en saf pre-pump), TAM CONFIRM (min_tape_score 3.0, gevşek 2.2 değil), çok küçük risk (0.25).
+  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ], risk_mult: 0.25, min_tape_score: 3.0, long_only: true}
+  # momentum_scan: DEVRE DIŞI (sources'ta yok). Pullback-girişi eklenince yeniden değerlendirilecek.
   momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR], risk_mult: 0.5, min_tape_score: 4.5}
 
 exits:
