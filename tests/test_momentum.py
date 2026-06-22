@@ -45,6 +45,16 @@ def main():
     # stop pozitif kalmalı: aşırı geniş sl_mult negatif stop → None
     chk("negatif stop → None", signals._mom_levels(10, 80.0, "LONG", 2.0, 2.5) is None)
 
+    # ---- _is_pullback_long (akıllı pullback filtresi) ----
+    pm = {"pullback_band_pct": 2.0, "rsi_min": 40, "rsi_max": 68}
+    def bld(t1="UP", t4="UP", px=100, e21=99, e50=98, rsi=55):
+        return {"trends": {"1h": t1, "4h": t4}, "price": px, "ema21": e21, "ema50": e50, "rsi": rsi}
+    chk("geçerli pullback (uptrend+ema21'e yakın+RSI55) → True", signals._is_pullback_long(bld(), pm))
+    chk("uzamış (px ema21'in çok üstünde) → False", not signals._is_pullback_long(bld(px=105), pm))
+    chk("1h trend UP değil → False", not signals._is_pullback_long(bld(t1="DOWN"), pm))
+    chk("RSI 75 (aşırı-alım/tepe) → False", not signals._is_pullback_long(bld(rsi=75), pm))
+    chk("ema dizilimi ters (e21<e50) → False", not signals._is_pullback_long(bld(e21=97, e50=98), pm))
+
     # ---- _oi_direction ----
     chk("taker 1.3 fund 0.01 → LONG", signals._oi_direction(1.3, 0.01) == "LONG")
     chk("taker 1.3 fund 0.08 → None (funding yüksek)", signals._oi_direction(1.3, 0.08) is None)

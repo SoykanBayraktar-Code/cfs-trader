@@ -25,7 +25,7 @@ signals:
   require_tape_confirm: true      # tape kapısı açık (CONFIRM + tape_min_score üstü CAUTION geçer; VETO hep red)
   tape_min_score: 2.2             # CONFIRM'e yakın CAUTION eşiği (motor CONFIRM_SCORE=3); 2.7→2.2 daha fazla işlem akışı
   max_tape_checks: 8              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız; anomali kaynakları eklendi)
-  min_rr: 1.2                     # motorun DOĞAL rr'si bu altındaysa setup elenir (yapısal kalite kapısı)
+  min_rr: 1.0                     # motorun DOĞAL rr kalite kapısı (1.2→1.0, SYN gibi IZLE-pullback'ler geçsin; TP zaten 5R'ye çekilir)
   target_rr: 5.0                  # PTJ 5:1 — TP sabit 5R'ye çekilir (aynı stop, 5R hedef); trailing koşturur. 0=motor TP'si
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
   scan_min_vol: 10000000          # GENİŞLETİLDİ 30M→10M (daha çok/erken hareket eden parite; pump'lar düşük-hacimde başlar)
@@ -47,6 +47,22 @@ momentum:
   oi_surge:      {min_vol: 10000000, oi_min: 4.0, top: 12, classes: [SESSIZ], risk_mult: 0.25, min_tape_score: 3.0, long_only: true}
   # momentum_scan: DEVRE DIŞI (sources'ta yok). Pullback-girişi eklenince yeniden değerlendirilecek.
   momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR], risk_mult: 0.5, min_tape_score: 4.5}
+
+pullback_momentum:
+  # AKILLI PULLBACK-MOMENTUM — scan_v3'e EK kaynak. Güçlü mover'lar arasından TRENDDE geri çekilmiş
+  # (ema21'e yakın, uzamamış, RSI sağlıklı) olanları LONG yakalar. Tepe-kovalamaz; 5R + trailing.
+  enabled: true
+  min_chg24: 8.0             # coin son 24s ≥%8 yükselmiş olmalı (gerçek momentum/mover)
+  top_gainers: 12            # en çok yükselen 12 mover'a bakılır
+  min_vol: 10000000          # likidite tabanı
+  pullback_band_pct: 2.0     # fiyat ema21'in ±%2 bandında = geri çekilmiş (uzamamış tepe değil)
+  rsi_min: 40                # sağlıklı pullback RSI alt sınırı (çöküş değil)
+  rsi_max: 68                # üst sınır (aşırı-alım/tepe değil)
+  max_atr_pct: 8.0           # ATR tavanı (TA-setup %6'dan gevşek)
+  sl_atr_mult: 1.5           # stop = giriş − 1.5×ATR (pullback invalidasyonu)
+  risk_mult: 0.5             # yarım boyut (yeni modül, doğrulanana kadar)
+  max_per_tick: 3            # tik başına en fazla pullback adayı
+  min_tape_score: 3.0        # TAM CONFIRM iste (tepe-satma riskine karşı kalite)
 
 exits:
   # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.

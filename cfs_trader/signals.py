@@ -190,8 +190,70 @@ def scan_oi_surge(cfg, regime):
     return cands
 
 
+def _is_pullback_long(b, pm):
+    """AKILLI PULLBACK: güçlü uptrend + ema21'e geri çekilmiş + sağlıklı RSI = 'trendde dip al' (tepe değil).
+    b = setup_levels.build çıktısı. True = giriş-adayı pullback."""
+    tr = b.get("trends", {}) or {}
+    if tr.get("1h") != "UP" or tr.get("4h") != "UP":     # üst zaman dilimi trendi yukarı olmalı
+        return False
+    px = b.get("price"); e21 = b.get("ema21"); e50 = b.get("ema50"); rsi = b.get("rsi", 50)
+    if not (px and e21 and e50) or not (e21 > e50):       # ema dizilimi yukarı (kısa>uzun)
+        return False
+    band = pm.get("pullback_band_pct", 2.0) / 100.0
+    if px > e21 * (1 + band):                              # ema21'in ÇOK üstünde = uzamış/tepe, pullback değil
+        return False
+    if px < e21 * (1 - 2 * band):                          # ema21'in çok altında = trend kırılıyor
+        return False
+    if not (pm.get("rsi_min", 40) <= rsi <= pm.get("rsi_max", 68)):  # aşırı-alım(tepe) ve çöküş dışı
+        return False
+    return True
+
+
+def scan_pullback_momentum(cfg, regime):
+    """Akıllı pullback-momentum: güçlü mover'lar arasından TRENDDE geri çekilmiş olanları LONG yakalar.
+    Tepe kovalamaz (ema21'e pullback + sağlıklı RSI). scan_all'a EK kaynak — tam CONFIRM + yarım risk."""
+    pm = cfg.get("pullback_momentum", {}) or {}
+    if not pm.get("enabled", False) or "LONG" not in cfg.signals["directions"]:
+        return []
+    target_rr = cfg.signals.get("target_rr", 5.0) or 5.0
+    cands = []
+    with _engine_cwd(cfg.engine_path):
+        import datahub, setup_levels
+        try:
+            from coil_scanner import NON_CRYPTO
+        except Exception:
+            NON_CRYPTO = set()
+        uni = datahub.get_ticker(min_vol=pm.get("min_vol", 10_000_000), exclude=NON_CRYPTO)
+        movers = sorted([r for r in uni if r.get("chg24", 0) >= pm.get("min_chg24", 8.0)],
+                        key=lambda r: -r["chg24"])[:pm.get("top_gainers", 12)]
+        for r in movers:
+            sym = r["symbol"]
+            try:
+                b = setup_levels.build(sym, "LONG")
+            except Exception:
+                continue
+            if not _is_pullback_long(b, pm):
+                continue
+            px = b.get("price"); atr_pct = b.get("atr_pct", 0) or 0
+            if not px or atr_pct <= 0 or atr_pct > pm.get("max_atr_pct", 8.0):
+                continue
+            lv = _mom_levels(px, atr_pct, "LONG", pm.get("sl_atr_mult", 1.5), target_rr)
+            if not lv:
+                continue
+            entry, stop, tp, rr = lv
+            cands.append(Candidate(
+                symbol=sym, side="LONG", entry=entry, stop=stop, tp=tp, rr=rr,
+                score=int(r.get("chg24", 0)), atr_pct=float(atr_pct), status="PULLBACK-MOM",
+                regime=regime["regime"], bias=regime["bias"],
+                risk_mult=float(pm.get("risk_mult", 0.5)), min_tape_score=float(pm.get("min_tape_score", 3.0)),
+            ))
+            if len(cands) >= pm.get("max_per_tick", 3):
+                break
+    return cands
+
+
 def scan_all(cfg):
-    """scan_v3 + (oi_surge/momentum) birleşik aday listesi. Sembol bazında dedup, anomali ÖNCELİKLİ
+    """scan_v3 + (oi_surge/momentum/pullback-momentum) birleşik aday listesi. Sembol bazında dedup, anomali ÖNCELİKLİ
     (paylaşılan sembolde momentum framing kazanır + tape bütçesinde öne geçer). (regime, [Candidate])."""
     regime, v3 = scan(cfg)
     m = cfg.get("momentum", {}) or {}
@@ -208,6 +270,11 @@ def scan_all(cfg):
                 extra += scan_momentum(cfg, regime)
             except Exception:
                 pass
+    # akıllı pullback-momentum (momentum bloğundan bağımsız, kendi config'iyle)
+    try:
+        extra += scan_pullback_momentum(cfg, regime)
+    except Exception:
+        pass
     seen, merged = set(), []
     for c in extra + v3:
         if c.symbol in seen:
