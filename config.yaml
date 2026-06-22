@@ -19,7 +19,7 @@ risk:
   margin_type: ISOLATED           # KESİNLİKLE isolated — cross YASAK. Set edilemezse işlem AÇILMAZ (kasa+INJ korunur)
 
 signals:
-  loop_minutes: 15
+  loop_minutes: 10                # tarama aralığı 15→10 dk (daha sık fırsat taraması)
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler
   require_tape_confirm: true      # tape kapısı açık (CONFIRM + tape_min_score üstü CAUTION geçer; VETO hep red)
