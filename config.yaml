@@ -28,6 +28,9 @@ signals:
   min_rr: 1.2                     # motorun DOĞAL rr'si bu altındaysa setup elenir (yapısal kalite kapısı)
   target_rr: 5.0                  # PTJ 5:1 — TP sabit 5R'ye çekilir (aynı stop, 5R hedef); trailing koşturur. 0=motor TP'si
   max_atr_pct: 6.0                # aşırı-oynak (>%6 ATR) adayları ele
+  scan_min_vol: 10000000          # GENİŞLETİLDİ 30M→10M (daha çok/erken hareket eden parite; pump'lar düşük-hacimde başlar)
+  scan_pool: 60                   # GENİŞLETİLDİ 40→60 (en çok yükselen 30 + düşen 30)
+  scan_top: 16                    # GENİŞLETİLDİ 12→16 (havuzdan dönen aday sayısı)
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
 
 momentum:
@@ -41,7 +44,7 @@ momentum:
   max_atr_pct: 8.0           # bu kaynaklar için ATR tavanı (TA-setup %6'dan gevşek; 1.5×8=%12 SL = max_sl sınırı)
   # oi_surge: HİPOTEZ DÜZELTMESİ (06-22, eklentiler 0/5 sonrası) — tezine uygun yalnız LONG (birikim=yükseliş),
   # yalnız SESSIZ (en saf pre-pump), TAM CONFIRM (min_tape_score 3.0, gevşek 2.2 değil), çok küçük risk (0.25).
-  oi_surge:      {min_vol: 20000000, oi_min: 4.0, top: 12, classes: [SESSIZ], risk_mult: 0.25, min_tape_score: 3.0, long_only: true}
+  oi_surge:      {min_vol: 10000000, oi_min: 4.0, top: 12, classes: [SESSIZ], risk_mult: 0.25, min_tape_score: 3.0, long_only: true}
   # momentum_scan: DEVRE DIŞI (sources'ta yok). Pullback-girişi eklenince yeniden değerlendirilecek.
   momentum_scan: {min_vol: 5000000,  top: 16, classes: [ATESLENIYOR], risk_mult: 0.5, min_tape_score: 4.5}
 

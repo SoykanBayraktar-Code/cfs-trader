@@ -48,10 +48,13 @@ def _target_tp(entry, stop, side, target_rr):
     return entry + target_rr * risk if side == "LONG" else entry - target_rr * risk
 
 
-def scan(cfg, min_vol=30_000_000, pool=40, top=12):
+def scan(cfg, min_vol=None, pool=None, top=None):
     """(regime_dict, [Candidate]) döndürür — config filtrelerini uygular (yön/RR/ATR).
-    target_rr>0 ise TP motorun hedefini DEĞİL, sabit R-katını hedefler (PTJ 5:1)."""
+    Evren genişliği config'ten: scan_min_vol/scan_pool/scan_top. target_rr>0 ise TP sabit R-katı (PTJ 5:1)."""
     sig = cfg.signals
+    min_vol = min_vol if min_vol is not None else sig.get("scan_min_vol", 30_000_000)
+    pool = pool if pool is not None else sig.get("scan_pool", 40)
+    top = top if top is not None else sig.get("scan_top", 12)
     target_rr = sig.get("target_rr", 0) or 0
     with _engine_cwd(cfg.engine_path):
         import scan_v3
