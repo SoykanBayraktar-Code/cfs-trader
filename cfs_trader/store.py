@@ -86,6 +86,7 @@ class Store:
             "sl_init": "REAL",
             "peak_price": "REAL",
             "trail_state": "TEXT DEFAULT 'INIT'",
+            "llm_note": "TEXT",            # brain post-mortem notu (kapanışta yazılır)
         }
         for col, typ in adds.items():
             if col not in have:
@@ -129,6 +130,11 @@ class Store:
     def update_trade_peak(self, trade_id, peak_price):
         """Sadece high-water mark'ı güncelle (SL taşınmasa bile peak ilerler)."""
         self.db.execute("UPDATE trades SET peak_price=? WHERE id=?", (peak_price, trade_id))
+        self.db.commit()
+
+    def set_trade_note(self, trade_id, note):
+        """brain post-mortem notunu işleme yaz (llm_note)."""
+        self.db.execute("UPDATE trades SET llm_note=? WHERE id=?", (note, trade_id))
         self.db.commit()
 
     def open_trades(self):

@@ -84,6 +84,22 @@ telegram:
 analyst:
   backend: cli                    # cli = Max planı `claude` CLI (ek API anahtarı GEREKMEZ); api = ANTHROPIC_API_KEY
 
+brain:
+  # Claude (LLM) zekâ katmanı — hepsi Max planı `claude` CLI ile (ek API ücreti YOK). Her özellik
+  # FAIL-SAFE: LLM hata/timeout verirse bot davranışı DEĞİŞMEZ; brain ASLA emir göndermez/iptal etmez.
+  enabled: true
+  # 1+7) Giriş öncesi ikinci göz — bekleyen girişi VETO edebilir (asla giriş zorlamaz). only_borderline:true
+  #      sadece tape!=CONFIRM adayları inceler; false = her girişi inceler (tik başına max 1 → ucuz).
+  pretrade:       {enabled: true,  model: sonnet, timeout: 75, only_borderline: false}
+  # 3) Kapanan her işleme tek-cümle 'neden' notu (trades.llm_note). notify:true → Telegram'a da yaz.
+  postmortem:     {enabled: true,  model: sonnet, timeout: 75, notify: false}
+  # 2) Günlük strateji raporu (cron ile çağrılır: python3 -m cfs_trader.brain daily)
+  daily:          {enabled: true,  model: opus,   timeout: 300}
+  # 6) Risk gözcüsü — açık pozisyon yön-konsantrasyonu / maruziyet uyarısı (rate-limited)
+  guardian:       {enabled: true,  model: sonnet, timeout: 75, min_interval_min: 60, risk_frac: 1.5}
+  # 5) Kaybeden kombinasyon tespiti (deterministik; daily raporunda gösterilir; learner zaten bastırır)
+  learning_guard: {enabled: true,  min_samples: 20, expectancy_floor: -0.10}
+
 learner:
   enabled: true                   # AKTİF — ama n<min_samples iken etkisiz (güvenli); 20 örneklemde kötü kombinasyonu kısar
   min_samples: 20

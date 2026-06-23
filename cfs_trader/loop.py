@@ -52,6 +52,13 @@ def scan_tick(ctx):
     if st["halted"]:
         log(ctx, f"[tik] gün durduruldu ({st['halt_reason']}) — tarama atlandı")
         return
+    # brain — risk gözcüsü (deterministik flag + rate-limited LLM uyarısı; fail-safe, emir atmaz)
+    try:
+        from . import brain
+        if brain._feat(ctx.cfg, "guardian"):
+            brain.risk_guardian(ctx.cfg, ctx.store, ctx.notifier, log=lambda m: log(ctx, m))
+    except Exception as e:
+        log(ctx, f"[tik] brain guardian hata (yok sayıldı): {e!r}")
     if ctx.store.open_count() >= cfg.risk["max_concurrent"]:
         log(ctx, "[tik] kapasite dolu — tarama atlandı")
         return
@@ -68,12 +75,13 @@ def scan_tick(ctx):
     for cand in cands:
         if ctx.store.open_count() >= cfg.risk["max_concurrent"]:
             break
+        tres = None
         # tape kapısı (pahalı) — sadece gerekiyorsa ve sınırı aşmadan
         if cfg.signals.get("require_tape_confirm", True):
             if taped >= cfg.signals.get("max_tape_checks", MAX_TAPE_CHECKS):
                 break
             taped += 1
-            signals.confirm_tape(cfg, cand, dur=22)
+            tres = signals.confirm_tape(cfg, cand, dur=22)
             log(ctx, f"   tape {cand.symbol} {cand.side} → {cand.tape_verdict} ({cand.tape_score:+.1f})")
 
         try:
@@ -93,6 +101,22 @@ def scan_tick(ctx):
                 log(ctx, f"[tik] ⛔ KILL-SWITCH: {gr.reason}")
                 return
             continue
+
+        # brain — giriş öncesi ikinci göz (fail-safe; VETO girişi ENGELLER, asla giriş ZORLAMAZ)
+        try:
+            from . import brain
+            if brain._feat(ctx.cfg, "pretrade"):
+                only_b = brain._sub(ctx.cfg, "pretrade").get("only_borderline", False)
+                if (not only_b) or cand.tape_verdict != "CONFIRM":
+                    dec, conf, why = brain.pretrade_review(ctx.cfg, cand, tape_raw=tres, store=ctx.store)
+                    if dec == "veto":
+                        ctx.store.log_decision(cand.symbol, cand.side, "REJECT", f"brain VETO ({conf}): {why}")
+                        log(ctx, f"   🧠 BRAIN VETO {cand.symbol} {cand.side}: {why}")
+                        ctx.notifier.send(f"🧠 <b>Brain VETO</b> {cand.symbol} {cand.side}\n{why} (güven: {conf})")
+                        continue
+                    log(ctx, f"   🧠 brain ALLOW {cand.symbol} {cand.side}: {why}")
+        except Exception as e:
+            log(ctx, f"   🧠 brain pretrade hata (giriş izinli): {e!r}")
 
         tid = executor.enter(cfg, ctx.binance, ctx.store, cand, gr.sizing, mark, day)
         ctx.notifier.send(

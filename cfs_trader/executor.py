@@ -90,6 +90,18 @@ def flatten(cfg, binance, store, trade, exit_price, reason, notifier=None):
         notifier.send(f"{ic} <b>{sym} {trade['side']}</b> {reason}\n"
                       f"PnL: {pnl:+.3f} USDT ({r_mult:+.2f}R) | fee~{fees:.3f}\n"
                       f"Gün: {st['realized_pnl']:+.2f} | ardışık-zarar: {st['consec_losses']}")
+
+    # brain — işlem-sonrası post-mortem (fail-safe; DB'ye not yazar, emir ATMAZ)
+    try:
+        from . import brain
+        if brain._feat(cfg, "postmortem"):
+            note, tag = brain.postmortem(cfg, trade, exit_price, reason, pnl, r_mult)
+            if note:
+                store.set_trade_note(trade["id"], (f"[{tag}] {note}" if tag else note))
+                if notifier and brain._sub(cfg, "postmortem").get("notify", False):
+                    notifier.send(f"🧠 <i>{sym}: {note}</i>")
+    except Exception:
+        pass
     return pnl, r_mult, st
 
 
