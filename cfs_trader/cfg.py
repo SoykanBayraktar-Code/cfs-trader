@@ -29,8 +29,33 @@ class Config:
         with open(path) as f:
             self._d = yaml.safe_load(f)
         _load_secrets(os.path.join(_ROOT, "secrets.env"))
+        self._apply_analyst_overrides()   # Opus analist'in ayar değişiklikleri (config.yaml'a DOKUNMADAN)
         # engine path: env override > config
         self.engine_path = os.environ.get("CFS_ENGINE_PATH") or self._d["signals"]["engine_path"]
+
+    def _apply_analyst_overrides(self):
+        """data/analyst_overrides.json'daki {param: değer} (noktalı yol) ayarlarını config'in ÜSTÜNE uygular.
+        Dosya yoksa no-op. config.yaml hiç değişmez; dosyayı silmek → varsayılana dönüş."""
+        import json
+        p = self.abspath("data/analyst_overrides.json")
+        if not os.path.exists(p):
+            return
+        try:
+            ov = json.load(open(p)).get("params", {})
+        except Exception:
+            return
+        for dotted, val in ov.items():
+            parts = dotted.split(".")
+            d = self._d
+            ok = True
+            for seg in parts[:-1]:
+                if isinstance(d, dict) and seg in d and isinstance(d[seg], dict):
+                    d = d[seg]
+                else:
+                    ok = False
+                    break
+            if ok and isinstance(d, dict) and parts[-1] in d:
+                d[parts[-1]] = val
 
     # --- ham erişim ---
     def __getitem__(self, k):
