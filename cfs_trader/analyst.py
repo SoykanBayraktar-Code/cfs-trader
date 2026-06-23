@@ -193,37 +193,80 @@ def write_overrides(db_root, accepted):
 
 
 # ---------- Opus çağrısı ----------
-def call_opus(ctx):
-    """Opus 4.8'i çağır (cache'li sistem + tool-output). verdict dict döndürür."""
+JSON_INSTRUCTION = """\n\nÇIKTI KURALI: HİÇBİR araç kullanma, dosya okuma/yazma, hiçbir şey çalıştırma. \
+SADECE aşağıdaki şemada GEÇERLİ bir JSON nesnesi döndür — başka hiçbir metin, açıklama, markdown veya code-fence YOK:
+{"summary": "<2-4 cümle>", "param_changes": [{"param": "<noktalı yol>", "proposed": <sayı veya bool>, "reason": "<gerekçe>"}], "code_recommendations": ["<fikir>"], "confidence": "low|medium|high"}
+param_changes yalnız yukarıdaki izinli paramlardan ve sınırlar içinde olsun; gerek yoksa boş dizi."""
+
+
+def _parse_json(text):
+    """Modelin metninden JSON nesnesini ayıkla (code-fence/önsöz toleranslı)."""
+    import re
+    t = text.strip()
+    if "```" in t:
+        m = re.search(r"```(?:json)?\s*(.+?)```", t, re.S)
+        if m:
+            t = m.group(1).strip()
+    if not t.startswith("{"):
+        i = t.find("{")
+        if i >= 0:
+            t = t[i:t.rfind("}") + 1]
+    return json.loads(t)
+
+
+def _call_cli(ctx):
+    """Max planı `claude` CLI headless ile çağır (ayrı API anahtarı gerekmez). (verdict, info)."""
+    import subprocess
+    prompt = SYSTEM + "\n\n" + _render(ctx) + JSON_INSTRUCTION
+    proc = subprocess.run(
+        ["claude", "-p", prompt, "--output-format", "json", "--model", "opus"],
+        capture_output=True, text=True, timeout=240, cwd="/tmp",
+    )
+    if proc.returncode != 0:
+        raise RuntimeError("claude CLI hata (rc=%s): %s" % (proc.returncode, (proc.stderr or proc.stdout)[:300]))
+    env = json.loads(proc.stdout)
+    if env.get("is_error"):
+        raise RuntimeError("claude CLI is_error: %s" % env.get("result", "")[:300])
+    verdict = _parse_json(env["result"])
+    cost = float(env.get("total_cost_usd", 0) or 0)
+    return verdict, {"backend": "cli (Max)", "cost_usd": cost, "billed": False}
+
+
+def _call_api(ctx):
+    """Anthropic API (ANTHROPIC_API_KEY) ile tool-output. (verdict, info)."""
     import anthropic
-    client = anthropic.Anthropic()   # ANTHROPIC_API_KEY env/secrets'tan
+    client = anthropic.Anthropic()
     msg = client.messages.create(
-        model=MODEL,
-        max_tokens=2000,
+        model=MODEL, max_tokens=2000,
         system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
-        tools=[TOOL],
-        tool_choice={"type": "tool", "name": "submit_analysis"},
+        tools=[TOOL], tool_choice={"type": "tool", "name": "submit_analysis"},
         messages=[{"role": "user", "content": _render(ctx)}],
     )
-    usage = msg.usage
+    u = msg.usage
+    cost = (getattr(u, "input_tokens", 0) * 5 + getattr(u, "output_tokens", 0) * 25
+            + getattr(u, "cache_read_input_tokens", 0) * 0.5
+            + getattr(u, "cache_creation_input_tokens", 0) * 6.25) / 1_000_000
     for block in msg.content:
         if block.type == "tool_use" and block.name == "submit_analysis":
-            return block.input, usage
+            return block.input, {"backend": "api", "cost_usd": cost, "billed": True}
     raise RuntimeError("submit_analysis çağrısı dönmedi")
 
 
-def run(cfg, store, notifier=None, apply=False, n_trades=40, log=print):
+def call_opus(ctx, backend="cli"):
+    """backend='cli' → Max planı (ücretsiz, varsayılan); 'api' → ANTHROPIC_API_KEY. (verdict, info)."""
+    return _call_cli(ctx) if backend == "cli" else _call_api(ctx)
+
+
+def run(cfg, store, notifier=None, apply=False, n_trades=40, backend="cli", log=print):
     from .cfg import _ROOT
     ctx = build_context(cfg, cfg.db_path, n_trades)
-    verdict, usage = call_opus(ctx)
+    verdict, info = call_opus(ctx, backend)
     accepted, rejected = validate(verdict.get("param_changes", []))
-    # maliyet
-    cost = (getattr(usage, "input_tokens", 0) * 5 + getattr(usage, "output_tokens", 0) * 25
-            + getattr(usage, "cache_read_input_tokens", 0) * 0.5
-            + getattr(usage, "cache_creation_input_tokens", 0) * 6.25) / 1_000_000
-    log("=== ANALİST ÖZETİ ===")
+    cost = info.get("cost_usd", 0)
+    cost_txt = ("~$%.4f" % cost) if info.get("billed") else ("Max planı / ücretsiz (notional ~$%.3f)" % cost)
+    log("=== ANALİST ÖZETİ (%s) ===" % info.get("backend"))
     log(verdict.get("summary", ""))
-    log("güven: %s | maliyet ~$%.4f" % (verdict.get("confidence"), cost))
+    log("güven: %s | maliyet: %s" % (verdict.get("confidence"), cost_txt))
     log("önerilen değişiklik: %d kabul / %d red" % (len(accepted), len(rejected)))
     for a in accepted:
         cl = " (kırpıldı %s→%s)" % (a["clamped_from"], a["value"]) if a.get("clamped_from") is not None else ""
@@ -244,8 +287,8 @@ def run(cfg, store, notifier=None, apply=False, n_trades=40, log=print):
     if notifier:
         chg = "\n".join("• %s=%s" % (a["param"], a["value"]) for a in accepted) or "(değişiklik yok)"
         recs = "\n".join("💡 %s" % r for r in verdict.get("code_recommendations", []))
-        notifier.send("🧠 <b>Analist</b> (%s, ~$%.3f)\n%s\n<b>%s:</b>\n%s%s" % (
-            verdict.get("confidence"), cost, verdict.get("summary", "")[:300],
+        notifier.send("🧠 <b>Analist</b> (%s, %s)\n%s\n<b>%s:</b>\n%s%s" % (
+            verdict.get("confidence"), info.get("backend"), verdict.get("summary", "")[:300],
             "UYGULANDI" if applied else "ÖNERİ", chg, ("\n" + recs) if recs else ""))
     return {"verdict": verdict, "accepted": accepted, "rejected": rejected, "applied": applied, "cost": cost}
 
@@ -255,17 +298,19 @@ def main():
     ap.add_argument("--apply", action="store_true", help="kabul edilen değişiklikleri override'a yaz")
     ap.add_argument("--yes", action="store_true", help="apply için onay (interaktif değilse)")
     ap.add_argument("--trades", type=int, default=40)
+    ap.add_argument("--backend", choices=["cli", "api"], default=None, help="cli=Max planı (varsayılan), api=ANTHROPIC_API_KEY")
     ap.add_argument("--restart", action="store_true", help="apply sonrası cfs-trader.service restart")
     a = ap.parse_args()
     from .cfg import get
     from .store import Store
     from .notify import Notifier
     cfg = get()
+    backend = a.backend or (cfg.get("analyst", {}) or {}).get("backend", "cli")
     if a.apply and not a.yes:
         print("--apply GERÇEK ayar değiştirir — onay için --yes ekle"); raise SystemExit(1)
     store = Store(cfg.db_path)
     notifier = Notifier(cfg)
-    res = run(cfg, store, notifier, apply=a.apply, n_trades=a.trades)
+    res = run(cfg, store, notifier, apply=a.apply, n_trades=a.trades, backend=backend)
     if a.apply and res["applied"] and a.restart:
         os.system("systemctl restart cfs-trader.service")
         print("cfs-trader yeniden başlatıldı")

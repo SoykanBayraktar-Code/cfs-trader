@@ -70,6 +70,11 @@ def main():
         if had:
             os.replace(backup, opath)
 
+    # ---- _parse_json (CLI çıktısı toleransı) ----
+    chk("düz JSON parse", analyst._parse_json('{"a": 1}')["a"] == 1)
+    chk("```json fence parse", analyst._parse_json('```json\n{"a": 2}\n```')["a"] == 2)
+    chk("önsözlü JSON parse", analyst._parse_json('İşte sonuç: {"a": 3} bitti')["a"] == 3)
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 

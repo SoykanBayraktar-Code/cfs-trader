@@ -81,6 +81,9 @@ paths:
 telegram:
   enabled: true                   # token + chat_id secrets.env'den okunur
 
+analyst:
+  backend: cli                    # cli = Max planı `claude` CLI (ek API anahtarı GEREKMEZ); api = ANTHROPIC_API_KEY
+
 learner:
   enabled: true                   # AKTİF — ama n<min_samples iken etkisiz (güvenli); 20 örneklemde kötü kombinasyonu kısar
   min_samples: 20
