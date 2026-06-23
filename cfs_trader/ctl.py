@@ -273,6 +273,15 @@ def cmd_trade(argv):
             line = f"  {cand.symbol} {cand.side}: tape {cand.tape_verdict} ({cand.tape_score:+.1f})"
             try:
                 mark = ctx.binance.mark_price(cand.symbol)
+                # YENİ SİSTEM: bağlam (liq_pull) yumuşak sizing-tilt — loop ile tutarlı (fail-safe, ≤1.0)
+                try:
+                    ct, lp = signals.context_tilt(cfg, cand)
+                    cand.context_tilt = ct
+                    cand.liq_pull = lp if lp is not None else 0.0
+                    if lp is not None:
+                        line += f" | liq_pull {lp} tilt {ct}"
+                except Exception:
+                    pass
                 gr = risk.gate(cfg, ctx.store, ctx.binance, cand, equity, mark, day, ctx.learner)
                 if gr.ok:
                     tid = executor.enter(cfg, ctx.binance, ctx.store, cand, gr.sizing, mark, day)
