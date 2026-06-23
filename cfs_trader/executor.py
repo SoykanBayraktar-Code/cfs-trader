@@ -92,9 +92,11 @@ def flatten(cfg, binance, store, trade, exit_price, reason, notifier=None):
                       f"Gün: {st['realized_pnl']:+.2f} | ardışık-zarar: {st['consec_losses']}")
 
     # brain — işlem-sonrası post-mortem (fail-safe; DB'ye not yazar, emir ATMAZ)
+    # item 6: losses_only → sadece kayıplara claude çağrısı (kazançlarda not yok; kontansiyon ↓)
     try:
         from . import brain
-        if brain._feat(cfg, "postmortem"):
+        _pm = brain._sub(cfg, "postmortem")
+        if brain._feat(cfg, "postmortem") and not (_pm.get("losses_only", False) and pnl >= 0):
             note, tag = brain.postmortem(cfg, trade, exit_price, reason, pnl, r_mult)
             if note:
                 store.set_trade_note(trade["id"], (f"[{tag}] {note}" if tag else note))

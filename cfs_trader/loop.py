@@ -103,6 +103,7 @@ def scan_tick(ctx):
             continue
 
         # brain — giriş öncesi ikinci göz (fail-safe; VETO girişi ENGELLER, asla giriş ZORLAMAZ)
+        brain_allow = None   # (conf, why) — allow ise; shadow-metrik için girişten sonra loglanır
         try:
             from . import brain
             if brain._feat(ctx.cfg, "pretrade"):
@@ -111,14 +112,20 @@ def scan_tick(ctx):
                     dec, conf, why = brain.pretrade_review(ctx.cfg, cand, tape_raw=tres, store=ctx.store)
                     if dec == "veto":
                         ctx.store.log_decision(cand.symbol, cand.side, "REJECT", f"brain VETO ({conf}): {why}")
+                        try: ctx.store.log_brain_decision("veto", conf, why, cand)   # shadow-metrik
+                        except Exception: pass
                         log(ctx, f"   🧠 BRAIN VETO {cand.symbol} {cand.side}: {why}")
                         ctx.notifier.send(f"🧠 <b>Brain VETO</b> {cand.symbol} {cand.side}\n{why} (güven: {conf})")
                         continue
+                    brain_allow = (conf, why)
                     log(ctx, f"   🧠 brain ALLOW {cand.symbol} {cand.side}: {why}")
         except Exception as e:
             log(ctx, f"   🧠 brain pretrade hata (giriş izinli): {e!r}")
 
         tid = executor.enter(cfg, ctx.binance, ctx.store, cand, gr.sizing, mark, day)
+        if brain_allow is not None:
+            try: ctx.store.log_brain_decision("allow", brain_allow[0], brain_allow[1], cand, trade_id=tid)
+            except Exception: pass
         ctx.notifier.send(
             f"🟢 <b>GİRİŞ {cand.symbol} {cand.side}</b> (#{tid})\n"
             f"entry~{mark} | SL {cand.stop} | TP {cand.tp}\n"

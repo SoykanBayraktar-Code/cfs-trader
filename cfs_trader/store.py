@@ -66,6 +66,16 @@ CREATE TABLE IF NOT EXISTS learning (
     wins      INTEGER NOT NULL DEFAULT 0,
     updated   INTEGER
 );
+CREATE TABLE IF NOT EXISTS brain_decisions (         -- item 4: pretrade gate shadow-metrik (gate edge ölçümü)
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts           INTEGER NOT NULL,
+    symbol       TEXT, side TEXT, signal_type TEXT, regime TEXT,
+    tape_verdict TEXT, tape_score REAL,
+    decision     TEXT,                              -- allow | veto
+    confidence   TEXT,
+    reason       TEXT,
+    trade_id     INTEGER                            -- allow→giren işlem id; veto→NULL (sonuç trades JOIN ile)
+);
 """
 
 
@@ -192,6 +202,34 @@ class Store:
         if not row or row["n"] == 0:
             return None, 0
         return row["sum_r"] / row["n"], row["n"]
+
+    # ---- brain shadow-metrik (item 4) ----
+    def log_brain_decision(self, decision, confidence, reason, cand, trade_id=None):
+        """pretrade gate kararını kaydet. allow→trade_id (giren işlem), veto→None."""
+        self.db.execute(
+            "INSERT INTO brain_decisions (ts,symbol,side,signal_type,regime,tape_verdict,tape_score,"
+            "decision,confidence,reason,trade_id) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (int(time.time()), cand.symbol, cand.side, cand.status, cand.regime,
+             cand.tape_verdict, cand.tape_score, decision, confidence, str(reason)[:300], trade_id),
+        )
+        self.db.commit()
+
+    def brain_gate_stats(self):
+        """Gate edge ölçümü: veto/allow sayıları + allow→kapanan işlemlerin ort. R'si ve kazanma oranı."""
+        counts = {r["decision"]: r["c"] for r in self.db.execute(
+            "SELECT decision, COUNT(*) c FROM brain_decisions GROUP BY decision")}
+        a = self.db.execute(
+            "SELECT COUNT(*) n, AVG(t.r_multiple) avg_r, "
+            "SUM(CASE WHEN t.r_multiple>0 THEN 1 ELSE 0 END) wins "
+            "FROM brain_decisions b JOIN trades t ON b.trade_id=t.id "
+            "WHERE b.decision='allow' AND t.status='CLOSED'").fetchone()
+        return {
+            "veto": counts.get("veto", 0),
+            "allow": counts.get("allow", 0),
+            "allow_closed_n": a["n"] or 0,
+            "allow_avg_r": round(a["avg_r"], 3) if a["avg_r"] is not None else None,
+            "allow_wins": a["wins"] or 0,
+        }
 
     def close(self):
         self.db.close()
