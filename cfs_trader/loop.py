@@ -90,6 +90,16 @@ def scan_tick(ctx):
             log(ctx, f"   {cand.symbol} mark fiyat hatası: {e}")
             continue
 
+        # bağlam — liq_pull yumuşak sizing-tilt (FAIL-SAFE; ≤1.0 → boyutu küçültebilir, cap'i ASLA aşmaz)
+        try:
+            ct, lp = signals.context_tilt(cfg, cand)
+            cand.context_tilt = ct
+            cand.liq_pull = lp if lp is not None else 0.0
+            if ct < 1.0:
+                log(ctx, f"   📐 bağlam {cand.symbol} {cand.side}: liq_pull={lp} → tilt={ct} (boyut küçültüldü)")
+        except Exception as e:
+            log(ctx, f"   📐 bağlam tilt hata (yok sayıldı): {e!r}")
+
         gr = risk.gate(cfg, ctx.store, ctx.binance, cand, equity, mark, day, ctx.learner)
         if not gr.ok:
             ctx.store.log_decision(cand.symbol, cand.side, "REJECT", gr.reason)

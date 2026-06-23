@@ -97,6 +97,8 @@ class Store:
             "peak_price": "REAL",
             "trail_state": "TEXT DEFAULT 'INIT'",
             "llm_note": "TEXT",            # brain post-mortem notu (kapanışta yazılır)
+            "liq_pull": "REAL",            # giriş anı likidasyon-mıknatıs yönü (-1..+1) — bağlam ölçümü
+            "context_tilt": "REAL",        # uygulanan bağlam sizing-tilt'i (≤1.0)
         }
         for col, typ in adds.items():
             if col not in have:
@@ -230,6 +232,22 @@ class Store:
             "allow_avg_r": round(a["avg_r"], 3) if a["avg_r"] is not None else None,
             "allow_wins": a["wins"] or 0,
         }
+
+    def context_stats(self):
+        """Bağlam (liq_pull) tilt ölçümü: liq_pull adayın yönüyle UYUŞAN vs ÇELİŞEN kapanan işlemler.
+        + = yukarı mıknatıs; LONG için liq_pull>0 = uyuşma, SHORT için liq_pull<0 = uyuşma."""
+        rows = self.db.execute(
+            "SELECT side, liq_pull, r_multiple FROM trades "
+            "WHERE status='CLOSED' AND r_multiple IS NOT NULL AND liq_pull IS NOT NULL"
+        ).fetchall()
+        agree = [r for r in rows if (r["liq_pull"] > 0) == (r["side"] == "LONG") and abs(r["liq_pull"]) >= 0.05]
+        dis = [r for r in rows if (r["liq_pull"] > 0) != (r["side"] == "LONG") and abs(r["liq_pull"]) >= 0.05]
+
+        def _wr(s):
+            n = len(s); w = sum(1 for x in s if x["r_multiple"] > 0)
+            r = sum(x["r_multiple"] for x in s)
+            return {"n": n, "wins": w, "winrate": round(100.0 * w / n, 0) if n else None, "sum_r": round(r, 2)}
+        return {"agree": _wr(agree), "disagree": _wr(dis), "total_with_liq": len(rows)}
 
     def close(self):
         self.db.close()

@@ -38,7 +38,8 @@ def size_position(cfg, binance, cand, equity, mark):
     # kaynak-bazlı çarpan NOTIONAL'a uygulanır (risk = notional*sl_dist). %50 risk + dar SL'de
     # pozisyon hep notional-tavanına takılır → çarpanı risk_cap'e koymak ETKİSİZ kalırdı (momentum=0.5 → yarım boyut).
     risk_mult = getattr(cand, "risk_mult", 1.0) or 1.0
-    notional = min(desired_notional, max_notional) * risk_mult
+    ctx_tilt = getattr(cand, "context_tilt", 1.0) or 1.0   # bağlam (liq_pull) yumuşak tilt ∈ [1-strength,1.0]
+    notional = min(desired_notional, max_notional) * risk_mult * ctx_tilt
 
     min_notional = binance.min_notional(cand.symbol)
     if notional < min_notional:

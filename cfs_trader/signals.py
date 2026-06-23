@@ -27,6 +27,8 @@ class Candidate:
     tape_score: float = 0.0
     risk_mult: float = 1.0       # kaynak-bazlı risk çarpanı (momentum=0.5 → yarım boyut)
     min_tape_score: float = 0.0  # bu adayın geçmesi için gereken min tape skoru (momentum sıkı eşik)
+    context_tilt: float = 1.0    # bağlam (liq_pull) yumuşak sizing-tilt'i (≤1.0; çelişme küçültür)
+    liq_pull: float = 0.0        # o anki likidasyon-mıknatıs yönü (-1..+1; ölçüm için kaydedilir)
 
 
 @contextlib.contextmanager
@@ -292,3 +294,43 @@ def confirm_tape(cfg, cand, dur=22):
     cand.tape_verdict = res.get("verdict", "?")
     cand.tape_score = res.get("score_avg", 0.0)
     return res
+
+
+# ───────────────────────── bağlam: liq_pull yumuşak sizing-tilt ─────────────────────────
+def live_liq_pull(cfg, symbol):
+    """Canlı likidasyon haritasından liq_pull (-1..+1). Hata/None → None (fail-safe)."""
+    from . import features
+    try:
+        with _engine_cwd(cfg.engine_path):
+            import liqmap
+            hm = liqmap.liq_heatmap(symbol)
+        if not hm:
+            return None
+        pull, _ = features.liq_pull(hm.get("clusters", []))
+        return pull
+    except Exception:
+        return None
+
+
+def _tilt_from_pull(lp, side, strength=0.4, min_abs=0.05):
+    """SAF tilt mantığı (test edilebilir). tilt ∈ [1-strength, 1.0] — yalnız çelişme küçültür."""
+    if lp is None or abs(lp) < min_abs:
+        return 1.0
+    side_sign = 1.0 if side == "LONG" else -1.0
+    agreement = max(-1.0, min(1.0, lp * side_sign))      # +1 uyuşma, -1 çelişme
+    tilt = 1.0 - strength * max(0.0, -agreement)         # yalnız çelişme küçültür
+    return round(max(1.0 - strength, min(1.0, tilt)), 4)
+
+
+def context_tilt(cfg, cand):
+    """liq_pull'a göre YUMUŞAK sizing-tilt → (tilt, liq_pull). FAIL-SAFE.
+    GÜVENLİK: tilt ∈ [1-strength, 1.0] — SADECE çelişme küçültür; uyuşma=tam boyut → notional-cap
+    asla aşılmaz (likidasyon riski ARTMAZ). |liq_pull|<min_abs = net görüş yok → 1.0 (dokunmaz)."""
+    c = cfg.get("context", {}) or {}
+    if not c.get("enabled", False) or c.get("source", "liq_pull") != "liq_pull":
+        return 1.0, None
+    lp = live_liq_pull(cfg, cand.symbol)
+    if lp is None:
+        return 1.0, None
+    tilt = _tilt_from_pull(lp, cand.side, float(c.get("tilt_strength", 0.4)), float(c.get("min_abs", 0.05)))
+    return tilt, round(lp, 4)

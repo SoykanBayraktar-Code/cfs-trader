@@ -503,6 +503,12 @@ def main():
             print("Yorum: allow'ların ort R'si sistem geneliyle kıyasla gate'in seçiciliğini, veto sayısı müdahale sıklığını gösterir.")
         else:
             print("(henüz kapanan allow işlemi yok)")
+        cs = store.context_stats()
+        print("\n=== BAĞLAM (liq_pull) TİLT ÖLÇÜMÜ ===")
+        ag, di = cs["agree"], cs["disagree"]
+        print("liq_pull UYUŞAN:  n=%s kazanma=%s%% toplam=%sR" % (ag["n"], ag["winrate"], ag["sum_r"]))
+        print("liq_pull ÇELİŞEN: n=%s kazanma=%s%% toplam=%sR" % (di["n"], di["winrate"], di["sum_r"]))
+        print("(liq_pull kayıtlı kapanan işlem: %d — örneklem büyüdükçe güvenilir olur)" % cs["total_with_liq"])
     elif a.cmd == "test":
         v = _ask("Sen bir testsin.", 'SADECE şu JSON: {"ok": true}', model="sonnet", timeout=60)
         print("CLI OK:", v)

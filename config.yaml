@@ -81,6 +81,15 @@ paths:
 telegram:
   enabled: true                   # token + chat_id secrets.env'den okunur
 
+context:
+  # Bağlam katmanı — kalibre özellik (liq_pull) ile YUMUŞAK sizing-tilt. F&G yön için gürültü çıktı (backtest), DIŞARIDA.
+  # GÜVENLİK: tilt ∈ [1-strength, 1.0] — SADECE çelişen işlemi küçültür; uyuşma=tam boyut → notional-cap aşılmaz.
+  # Backtest (25 işlem): liq_pull uyuşan %57 +2.3R vs çelişen %43 −3.2R (n küçük, eyes-open soft tilt). liq_pull trade'lerde kaydedilir → ölçüm sürer.
+  enabled: true
+  source: liq_pull
+  tilt_strength: 0.4              # çelişen işlemi en fazla %40 küçültür (uyuşan = tam boyut)
+  min_abs: 0.05                   # |liq_pull|<bu → net görüş yok → dokunma (tilt 1.0)
+
 analyst:
   backend: cli                    # cli = Max planı `claude` CLI (ek API anahtarı GEREKMEZ); api = ANTHROPIC_API_KEY
 
