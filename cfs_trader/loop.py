@@ -119,16 +119,18 @@ def scan_tick(ctx):
             if brain._feat(ctx.cfg, "pretrade"):
                 only_b = brain._sub(ctx.cfg, "pretrade").get("only_borderline", False)
                 if (not only_b) or cand.tape_verdict != "CONFIRM":
-                    dec, conf, why = brain.pretrade_review(ctx.cfg, cand, tape_raw=tres, store=ctx.store)
+                    dec, conv, size_hint, why = brain.pretrade_review(ctx.cfg, cand, tape_raw=tres, store=ctx.store)
+                    cand.brain_conviction = conv          # SHADOW: kaydedilir, henüz sizing'e UYGULANMAZ
+                    cand.brain_size_hint = size_hint
                     if dec == "veto":
-                        ctx.store.log_decision(cand.symbol, cand.side, "REJECT", f"brain VETO ({conf}): {why}")
-                        try: ctx.store.log_brain_decision("veto", conf, why, cand)   # shadow-metrik
+                        ctx.store.log_decision(cand.symbol, cand.side, "REJECT", f"brain VETO (k={conv}): {why}")
+                        try: ctx.store.log_brain_decision("veto", str(conv), why, cand)   # shadow-metrik
                         except Exception: pass
                         log(ctx, f"   🧠 BRAIN VETO {cand.symbol} {cand.side}: {why}")
-                        ctx.notifier.send(f"🧠 <b>Brain VETO</b> {cand.symbol} {cand.side}\n{why} (güven: {conf})")
+                        ctx.notifier.send(f"🧠 <b>Brain VETO</b> {cand.symbol} {cand.side}\n{why} (konviksiyon: {conv})")
                         continue
-                    brain_allow = (conf, why)
-                    log(ctx, f"   🧠 brain ALLOW {cand.symbol} {cand.side}: {why}")
+                    brain_allow = (str(conv), why)
+                    log(ctx, f"   🧠 brain ALLOW {cand.symbol} {cand.side}: konv={conv} size_hint={size_hint} — {why}")
         except Exception as e:
             log(ctx, f"   🧠 brain pretrade hata (giriş izinli): {e!r}")
 

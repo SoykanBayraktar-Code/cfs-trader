@@ -99,6 +99,8 @@ class Store:
             "llm_note": "TEXT",            # brain post-mortem notu (kapanışta yazılır)
             "liq_pull": "REAL",            # giriş anı likidasyon-mıknatıs yönü (-1..+1) — bağlam ölçümü
             "context_tilt": "REAL",        # uygulanan bağlam sizing-tilt'i (≤1.0)
+            "brain_conviction": "REAL",    # Faz1 M2: Claude pretrade konviksiyonu 0-1 (SHADOW)
+            "brain_size_hint": "REAL",     # Faz1 M2: Claude önerilen boyut çarpanı 0.5-1.0 (SHADOW, uygulanmaz)
         }
         for col, typ in adds.items():
             if col not in have:
@@ -248,6 +250,22 @@ class Store:
             r = sum(x["r_multiple"] for x in s)
             return {"n": n, "wins": w, "winrate": round(100.0 * w / n, 0) if n else None, "sum_r": round(r, 2)}
         return {"agree": _wr(agree), "disagree": _wr(dis), "total_with_liq": len(rows)}
+
+    def brain_conviction_stats(self):
+        """Faz1 M2 SHADOW: Claude pretrade konviksiyonu (yüksek≥0.6 vs düşük) → kapanan işlem sonucu.
+        Konviksiyon işlem kalitesini öngörüyor mu (yüksek-konv daha mı kazanıyor)?"""
+        rows = self.db.execute(
+            "SELECT brain_conviction, brain_size_hint, r_multiple FROM trades "
+            "WHERE status='CLOSED' AND r_multiple IS NOT NULL AND brain_conviction IS NOT NULL"
+        ).fetchall()
+        hi = [r for r in rows if r["brain_conviction"] >= 0.6]
+        lo = [r for r in rows if r["brain_conviction"] < 0.6]
+
+        def _wr(s):
+            n = len(s); w = sum(1 for x in s if x["r_multiple"] > 0)
+            return {"n": n, "wins": w, "winrate": round(100.0 * w / n, 0) if n else None,
+                    "sum_r": round(sum(x["r_multiple"] for x in s), 2)}
+        return {"high_conv": _wr(hi), "low_conv": _wr(lo), "total": len(rows)}
 
     def close(self):
         self.db.close()

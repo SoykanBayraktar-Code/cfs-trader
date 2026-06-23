@@ -135,13 +135,72 @@ KESİN KURALLAR:
 - ŞÜPHEDE İZİN VER (allow). Yalnız NET, açıklanabilir bir red sebebi varsa veto et.
 - Aşırı-temkinli olup her şeyi veto ETME — bot işlem yapmak zorunda; gereksiz veto = kaçan fırsat.
 - Gerçek para. Tek bariz hatayı önlersen değerlisin; iyi girişleri bloke edersen zararlısın.
+- BAĞLAM çelişkisini TART: tape (kısa-vade order-flow) boğa ama liq_pull (likidasyon mıknatısı) / rejim / \
+makro ayı ise (ya da tersi) → bu DÜŞÜK-KONVİKSİYON bir giriştir. conviction'ı düşür, size_hint'i küçült; \
+net tuzaksa veto et. Tüm sinyaller AYNI yöne bakıyorsa conviction yüksek, size_hint tam.
 
 Çıktı SADECE şu JSON (başka metin/markdown YOK):
-{"decision":"allow|veto","confidence":"low|medium|high","reason":"<kısa Türkçe gerekçe, ≤20 kelime>"}"""
+{"decision":"allow|veto","conviction":<0.0-1.0>,"size_hint":<0.5-1.0>,"reason":"<kısa Türkçe gerekçe, ≤20 kelime>"}
+conviction = bu girişe güvenin (0=çok zayıf, 1=çok güçlü). size_hint = önerilen boyut çarpanı (0.5=yarım, 1.0=tam)."""
+
+
+def _liq_text(lp):
+    """liq_pull sayısını insan-okur yorum (Claude prompt'u için)."""
+    if lp is None:
+        return "yok"
+    yon = "yukarı-mıknatıs (boğa)" if lp > 0 else "aşağı-mıknatıs (ayı)"
+    güc = "güçlü" if abs(lp) >= 0.5 else ("orta" if abs(lp) >= 0.2 else "zayıf")
+    return "%s %s (%.2f)" % (güc, yon, lp)
+
+
+_macro_cache = {"ts": 0, "data": None}
+
+
+def _macro_context(cfg):
+    """Canlı makro (F&G + stablecoin), 15dk cache (ücretsiz, anahtarsız, Claude çağrısı DEĞİL)."""
+    if time.time() - _macro_cache["ts"] < 900 and _macro_cache["data"] is not None:
+        return _macro_cache["data"]
+    data = None
+    try:
+        from .features import cal_fng, cal_stablecoin
+        from .signals import _engine_cwd
+        with _engine_cwd(cfg.engine_path):
+            import defillama, macro_ctx
+            fg = macro_ctx.fear_greed()
+            sc = defillama.stablecoin_flow(7)
+        comps = []
+        fgv = fg.get("value") if fg else None
+        if fgv is not None:
+            comps.append(cal_fng(fgv))
+        if sc and sc.get("change_pct") is not None:
+            comps.append(cal_stablecoin(sc["change_pct"]))
+        risk = round(sum(comps) / len(comps), 3) if comps else None
+        data = {"risk_on_off": risk, "fng": fgv, "fng_label": fg.get("label") if fg else None}
+    except Exception:
+        data = None
+    _macro_cache.update({"ts": time.time(), "data": data})
+    return data
+
+
+def _parse_pretrade(v):
+    """SAF: brain pretrade çıktısını ayrıştır → (decision, conviction, size_hint, reason). Test edilebilir."""
+    dec = str(v.get("decision", "allow")).strip().lower()
+    if dec not in ("allow", "veto"):
+        dec = "allow"
+    try:
+        conv = max(0.0, min(1.0, float(v.get("conviction", 0.5))))
+    except (TypeError, ValueError):
+        conv = 0.5
+    try:
+        sh = max(0.5, min(1.0, float(v.get("size_hint", 1.0))))
+    except (TypeError, ValueError):
+        sh = 1.0
+    return dec, round(conv, 3), round(sh, 3), str(v.get("reason", ""))[:300]
 
 
 def pretrade_review(cfg, cand, tape_raw=None, store=None, model=None, timeout=None):
-    """(decision, confidence, reason) döndürür. decision ∈ {allow, veto}. Çağıran fail-safe sarar."""
+    """(decision, conviction, size_hint, reason). decision∈{allow,veto}; conviction∈[0,1]; size_hint∈[0.5,1].
+    M1: prompt liq_pull + makro ile ZENGİNLEŞTİRİLDİ. M2: çıktı karar-verici (conviction+size_hint). Çağıran fail-safe sarar."""
     s = _sub(cfg, "pretrade")
     model = model or s.get("model", "sonnet")
     timeout = timeout or s.get("timeout", 45)
@@ -165,20 +224,24 @@ def pretrade_review(cfg, cand, tape_raw=None, store=None, model=None, timeout=No
         if keep:
             tape_txt = "\nTAPE (ham order-flow): " + json.dumps(keep, ensure_ascii=False)[:600]
 
+    # M1 — BAĞLAM ZENGİNLEŞTİRME (Claude çağrısı DEĞİL; liq_pull adayda hazır, makro 15dk cache)
+    lp = getattr(cand, "liq_pull", 0.0)
+    mc = _macro_context(cfg) or {}
+    ctx_txt = "\nBAĞLAM: liq_pull(likidasyon-mıknatıs)=%s | makro risk_on_off=%s (F&G %s %s)" % (
+        _liq_text(lp), mc.get("risk_on_off"), mc.get("fng"), mc.get("fng_label") or "")
+
     user = (
         "İŞLEM ADAYI: %s %s | kaynak=%s | rejim=%s/%s\n"
         "entry=%s stop=%s tp=%s rr=%s atr%%=%s score=%s\n"
-        "tape verdict=%s skor=%+.1f | risk_mult=%s%s%s\n\n"
-        "Bu girişe izin ver mi, veto mu? JSON ver."
+        "tape verdict=%s skor=%+.1f | risk_mult=%s%s%s%s\n\n"
+        "Tape ile bağlam (liq_pull/rejim/makro) AYNI yöne mi bakıyor, ÇELİŞİYOR mu? Buna göre "
+        "decision + conviction + size_hint ver. JSON."
     ) % (cand.symbol, cand.side, cand.status, cand.regime, cand.bias,
          cand.entry, cand.stop, cand.tp, cand.rr, cand.atr_pct, cand.score,
-         cand.tape_verdict, cand.tape_score, getattr(cand, "risk_mult", 1.0), tape_txt, learn)
+         cand.tape_verdict, cand.tape_score, getattr(cand, "risk_mult", 1.0), tape_txt, ctx_txt, learn)
 
     v = _ask(_PRETRADE_SYS, user, model=model, timeout=timeout)
-    dec = str(v.get("decision", "allow")).strip().lower()
-    if dec not in ("allow", "veto"):
-        dec = "allow"
-    return dec, str(v.get("confidence", "")).strip().lower(), str(v.get("reason", ""))[:300]
+    return _parse_pretrade(v)
 
 
 # ═══════════════════════ 3) İŞLEM-SONRASI POST-MORTEM ═══════════════════════
@@ -509,6 +572,11 @@ def main():
         print("liq_pull UYUŞAN:  n=%s kazanma=%s%% toplam=%sR" % (ag["n"], ag["winrate"], ag["sum_r"]))
         print("liq_pull ÇELİŞEN: n=%s kazanma=%s%% toplam=%sR" % (di["n"], di["winrate"], di["sum_r"]))
         print("(liq_pull kayıtlı kapanan işlem: %d — örneklem büyüdükçe güvenilir olur)" % cs["total_with_liq"])
+        bc = store.brain_conviction_stats()
+        print("\n=== FAZ1 M2: BRAIN KONVİKSİYON ÖLÇÜMÜ (SHADOW) ===")
+        print("yüksek konv (≥0.6): n=%s kazanma=%s%% toplam=%sR" % (bc["high_conv"]["n"], bc["high_conv"]["winrate"], bc["high_conv"]["sum_r"]))
+        print("düşük konv (<0.6):  n=%s kazanma=%s%% toplam=%sR" % (bc["low_conv"]["n"], bc["low_conv"]["winrate"], bc["low_conv"]["sum_r"]))
+        print("(konviksiyon kayıtlı: %d — yüksek-konv daha çok kazanıyorsa size_hint'i gerçek sizing'e bağlarız)" % bc["total"])
     elif a.cmd == "test":
         v = _ask("Sen bir testsin.", 'SADECE şu JSON: {"ok": true}', model="sonnet", timeout=60)
         print("CLI OK:", v)

@@ -29,6 +29,8 @@ class Candidate:
     min_tape_score: float = 0.0  # bu adayın geçmesi için gereken min tape skoru (momentum sıkı eşik)
     context_tilt: float = 1.0    # bağlam (liq_pull) yumuşak sizing-tilt'i (≤1.0; çelişme küçültür)
     liq_pull: float = 0.0        # o anki likidasyon-mıknatıs yönü (-1..+1; ölçüm için kaydedilir)
+    brain_conviction: float = None   # Faz1 M2: Claude pretrade konviksiyonu 0-1 (SHADOW, ölçüm)
+    brain_size_hint: float = None    # Faz1 M2: Claude önerilen boyut çarpanı 0.5-1.0 (SHADOW, henüz uygulanmaz)
 
 
 @contextlib.contextmanager

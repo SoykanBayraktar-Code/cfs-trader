@@ -81,6 +81,22 @@ def main():
     chk("shadow: allow→kapanan n=1, ortR=1.0, kazanan=1",
         gs["allow_closed_n"] == 1 and abs(gs["allow_avg_r"] - 1.0) < 1e-9 and gs["allow_wins"] == 1)
 
+    # ---- Faz1 M2: _parse_pretrade (karar-verici çıktı) ----
+    d, c, sh, r = brain._parse_pretrade({"decision": "allow", "conviction": 0.8, "size_hint": 0.9, "reason": "güçlü"})
+    chk("parse allow + konv 0.8 + size 0.9", d == "allow" and c == 0.8 and sh == 0.9)
+    d, c, sh, r = brain._parse_pretrade({"decision": "veto", "conviction": 0.1, "size_hint": 0.5})
+    chk("parse veto + düşük konv", d == "veto" and c == 0.1 and sh == 0.5)
+    d, c, sh, r = brain._parse_pretrade({})
+    chk("parse boş → allow/0.5/1.0 varsayılan", d == "allow" and c == 0.5 and sh == 1.0)
+    d, c, sh, r = brain._parse_pretrade({"decision": "x", "conviction": 5, "size_hint": 0.1})
+    chk("parse sınır: konv→1.0(clip), size→0.5(clip), geçersiz dec→allow", d == "allow" and c == 1.0 and sh == 0.5)
+    chk("parse konv metin → 0.5 fallback", brain._parse_pretrade({"conviction": "yüksek"})[1] == 0.5)
+
+    # ---- _liq_text (prompt yorumu) ----
+    chk("_liq_text + → boğa", "boğa" in brain._liq_text(0.6))
+    chk("_liq_text − → ayı", "ayı" in brain._liq_text(-0.6))
+    chk("_liq_text None → yok", brain._liq_text(None) == "yok")
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 

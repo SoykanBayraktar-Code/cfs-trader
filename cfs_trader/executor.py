@@ -47,6 +47,8 @@ def enter(cfg, binance, store, cand, sizing, mark, day):
         tp_order_id=str(tp_order.get("algoId") or tp_order.get("orderId")),
         sl_init=sl_price, peak_price=mark, trail_state="INIT",   # Aşama 1: trailing başlangıç durumu
         liq_pull=getattr(cand, "liq_pull", 0.0), context_tilt=getattr(cand, "context_tilt", 1.0),  # bağlam ölçümü
+        brain_conviction=getattr(cand, "brain_conviction", None),  # Faz1 M2 SHADOW: Claude konviksiyon/boyut ölçümü
+        brain_size_hint=getattr(cand, "brain_size_hint", None),
     )
     store.log_decision(sym, cand.side, "ENTER",
                        f"qty={sizing.qty} notional={sizing.notional} risk={sizing.risk_usdt} tape={cand.tape_verdict}",
