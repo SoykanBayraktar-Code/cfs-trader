@@ -44,6 +44,10 @@ def cand(side="LONG", entry=100, stop=98, tp=106, tape="CONFIRM", tape_score=Non
 
 def main():
     cfg = get_cfg()
+    # TEMEL sizing mekaniğini izole et — dinamik boyut/kaldıraç KAPALI (onlar test_context'te ayrıca test edilir)
+    for blk in ("dynamic_sizing", "dynamic_leverage"):
+        if isinstance(cfg._d.get(blk), dict):
+            cfg._d[blk]["enabled"] = False
     cfg._d["dry_run"] = True       # offline test config.yaml mode/dry_run'dan BAĞIMSIZ — hep paper mantığı
     cfg._d["mode"] = "testnet"
     cfg._d["risk"]["max_concurrent"] = 1   # test config'ten BAĞIMSIZ (canlıda 3 olsa da senaryo 1 pozisyon)

@@ -34,6 +34,7 @@ class Candidate:
     sizing_confidence: float = None  # kazanç-ihtimali vekili 0-1 (dinamik boyut için)
     conf_mult: float = 1.0           # kazanç-ihtimaliyle orantılı boyut çarpanı ∈ [min_frac,1.0] (final notional'a)
     risk_pct_used: float = None      # efektif risk% (kasanın %'si, gösterim)
+    leverage_used: int = None        # dinamik kaldıraç (confidence yüksek→büyür, SL-güvenli sınırda)
 
 
 @contextlib.contextmanager

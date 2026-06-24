@@ -14,7 +14,7 @@ def enter(cfg, binance, store, cand, sizing, mark, day):
     """Pozisyon aç + SL/TP bracket koy + store'a OPEN trade yaz. trade_id döndürür."""
     sym = cand.symbol
     entry_side, exit_side = _sides(cand.side)
-    lev = cfg.risk["leverage"]
+    lev = getattr(cand, "leverage_used", None) or cfg.risk["leverage"]   # dinamik kaldıraç (risk.gate'te confidence'a göre)
 
     # KESİNLİKLE ISOLATED — cross YASAK. Zaten isolated ise dokunma; cross/bilinmiyorsa isolated'a al.
     # İsolated'a alınamazsa hata yükselir → işlem AÇILMAZ, asla cross'a düşmez (kasa + INJ korunur).

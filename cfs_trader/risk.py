@@ -43,6 +43,19 @@ def dynamic_conf_mult(cfg, conf):
     return round(mf + (1.0 - mf) * max(0.0, min(1.0, conf)), 3)
 
 
+def leverage_for(cfg, conf, sl_dist):
+    """confidence → kaldıraç (base→max), AMA SL likidasyon-ÖNCESİ kalacak max kaldıraçla sınırlı (güvenlik ÖNCE).
+    sl_dist ≤ (1/lev − maint)×safety olmalı → geniş-SL'li işlem yüksek kaldıraç ALMAZ. SAF, test edilebilir."""
+    s = cfg.get("dynamic_leverage", {}) or {}
+    if not s.get("enabled", False):
+        return int(cfg.risk["leverage"])
+    base = int(s.get("base_leverage", 5)); mx = int(s.get("max_leverage", 8))
+    maint = float(s.get("maint_margin", 0.005)); sf = float(s.get("liq_safety_factor", 0.8))
+    desired = base + (mx - base) * max(0.0, min(1.0, conf if conf is not None else 0.5))
+    safe_lev = 1.0 / (sl_dist / sf + maint) if sl_dist > 0 else mx   # SL'nin güvenli kalacağı max kaldıraç
+    return max(base, min(mx, int(min(desired, safe_lev))))
+
+
 def size_position(cfg, binance, cand, equity, mark):
     """Risk-tavanı + margin-tavanı + min-notional ile qty hesapla. Sizing | None döndürür."""
     r = cfg.risk
@@ -53,9 +66,12 @@ def size_position(cfg, binance, cand, equity, mark):
     if sl_dist > max_sl:
         return None, f"SL çok geniş (%{sl_dist*100:.1f} > %{r.get('max_sl_pct', 12)}) — kaldıraçta likidasyon riski"
 
+    # DİNAMİK KALDIRAÇ: confidence yüksekse büyür (base→max), SL-güvenli sınırda (likidasyon-öncesi-SL garantisi)
+    lev = leverage_for(cfg, getattr(cand, "sizing_confidence", None), sl_dist)
+    cand.leverage_used = lev
     risk_cap = equity * r["risk_per_trade_pct"] / 100.0        # tam-güven tavanı (conf_mult ile ölçeklenir)
     desired_notional = risk_cap / sl_dist                        # bu kaybı verecek notional
-    max_notional = min(r["leverage"] * equity, r["max_position_notional_usdt"])
+    max_notional = min(lev * equity, r["max_position_notional_usdt"])
     # kaynak-bazlı çarpan NOTIONAL'a uygulanır (risk = notional*sl_dist). %50 risk + dar SL'de
     # pozisyon hep notional-tavanına takılır → çarpanı risk_cap'e koymak ETKİSİZ kalırdı (momentum=0.5 → yarım boyut).
     risk_mult = getattr(cand, "risk_mult", 1.0) or 1.0

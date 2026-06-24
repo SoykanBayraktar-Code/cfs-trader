@@ -89,6 +89,27 @@ def main():
     chk("conf_mult ≤1.0 (tam-boyutu aşmaz)", R.dynamic_conf_mult(CfgDyn(True), 5.0) == 1.0)
     chk("conf_mult kapalı → 1.0", R.dynamic_conf_mult(CfgDyn(False), 0.9) == 1.0)
 
+    # ---- DİNAMİK KALDIRAÇ: leverage_for (confidence + SL-güvenlik) ----
+    class CfgLev:
+        risk = {"leverage": 5}
+        def __init__(self, en): self._en=en
+        def get(self, k, d=None):
+            return {"enabled": self._en, "base_leverage": 5, "max_leverage": 8,
+                    "liq_safety_factor": 0.8, "maint_margin": 0.005} if k=="dynamic_leverage" else (d or {})
+    C = CfgLev(True)
+    chk("yüksek-conf + dar SL(%2) → 8x", R.leverage_for(C, 1.0, 0.02) == 8)
+    chk("düşük-conf(%0) → 5x (base)", R.leverage_for(C, 0.0, 0.02) == 5)
+    chk("yüksek-conf + GENİŞ SL(%12) → SL-güvenlik 6x'e kısar", R.leverage_for(C, 1.0, 0.12) == 6)
+    chk("yüksek-conf + SL(%9) → 8x", R.leverage_for(C, 1.0, 0.09) == 8)
+    chk("kapalı → sabit 5x", R.leverage_for(CfgLev(False), 1.0, 0.02) == 5)
+    # GÜVENLİK invariantı: dönen kaldıraçta SL likidasyon-öncesi (sl_dist ≤ (1/lev-maint)*0.8)
+    ok_inv = True
+    for cf in (0.0, 0.5, 1.0):
+        for sld in (0.02, 0.05, 0.09, 0.12):
+            lev = R.leverage_for(C, cf, sld)
+            if sld > (1.0/lev - 0.005) * 0.8 + 1e-9: ok_inv = False
+    chk("GÜVENLİK: dönen kaldıraçta SL hep likidasyon-öncesi", ok_inv)
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 
