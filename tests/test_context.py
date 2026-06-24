@@ -71,6 +71,24 @@ def main():
     out = signals._regime_filter("RANGE", cands, CfgRF(False))
     chk("RANGE + skip kapalı → hepsi kaldı", len(out) == 3)
 
+    # ---- SLX post-mortem: ters-rejim filtresi ----
+    def mks(sym, side, regime): return Candidate(symbol=sym, side=side, entry=1, stop=0.98, tp=1.1, rr=5,
+                                                 score=3, atr_pct=2, status="PULLBACK-MOM", regime=regime, bias=side)
+    class CfgCR:
+        signals = {"skip_counter_regime": True, "skip_range_fresh": False}
+        def get(self, k, d=None): return self.signals if k == "signals" else (d or {})
+    longs_shorts = [mks("A", "LONG", "TREND_DOWN"), mks("B", "SHORT", "TREND_DOWN")]
+    out = signals._regime_filter("TREND_DOWN", longs_shorts, CfgCR())
+    chk("TREND_DOWN → LONG elendi, SHORT kaldı (ters-rejim)", [c.symbol for c in out] == ["B"])
+    ls2 = [mks("A", "LONG", "TREND_UP"), mks("B", "SHORT", "TREND_UP")]
+    out = signals._regime_filter("TREND_UP", ls2, CfgCR())
+    chk("TREND_UP → SHORT elendi, LONG kaldı (ters-rejim)", [c.symbol for c in out] == ["A"])
+    class CfgCRoff:
+        signals = {"skip_counter_regime": False, "skip_range_fresh": False}
+        def get(self, k, d=None): return self.signals if k == "signals" else (d or {})
+    out = signals._regime_filter("TREND_DOWN", longs_shorts, CfgCRoff())
+    chk("skip_counter_regime kapalı → hepsi kaldı", len(out) == 2)
+
     # ---- DİNAMİK BOYUT: _confidence + dynamic_risk_pct ----
     from cfs_trader import risk as R
     chk("confidence tape CONFIRM(3.0) tek → 0.75", R._confidence(3.0, None, 0, None) == 0.75)

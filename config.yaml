@@ -54,6 +54,7 @@ signals:
   scan_pool: 60                   # GENİŞLETİLDİ 40→60 (en çok yükselen 30 + düşen 30)
   scan_top: 16                    # GENİŞLETİLDİ 12→16 (havuzdan dönen aday sayısı)
   skip_range_fresh: true          # KES+YOĞUNLAŞ (06-24): RANGE rejiminde FRESH girişi YOK (veri: RANGE|FRESH iki yön negatif)
+  skip_counter_regime: true       # SLX POST-MORTEM (06-24): TERS-rejim girişi YOK — TREND_DOWN'da LONG / TREND_UP'ta SHORT engellenir (PULLBACK-MOM dahil)
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
 
 momentum:
@@ -123,7 +124,7 @@ brain:
   # 1+2) Giriş öncesi ikinci göz — VETO edebilir (asla giriş zorlamaz). only_borderline:true=sadece
   #      tape!=CONFIRM adayları inceler (güçlü CONFIRM beklemeden açılır → hızlı fill, az kontansiyon).
   #      timeout 75→22s: claude yavaşlarsa giriş yolunu uzun bloklamasın.
-  pretrade:       {enabled: true,  model: sonnet, timeout: 22, only_borderline: true}
+  pretrade:       {enabled: true,  model: sonnet, timeout: 22, only_borderline: true, veto_below_conviction: 0.40}  # SLX#44: konv<0.40 → VETO (sertleştirme)
   # 3+6) Kapanan işleme 'neden' notu. losses_only:true=sadece kayıplara claude çağrısı (kontansiyon ↓).
   postmortem:     {enabled: true,  model: sonnet, timeout: 22, notify: false, losses_only: true}
   # 8) Günlük strateji raporu + analyst guardrail'li param önerisi (cron: python3 -m cfs_trader.brain daily)

@@ -92,6 +92,13 @@ def main():
     chk("parse sınır: konv→1.0(clip), size→0.5(clip), geçersiz dec→allow", d == "allow" and c == 1.0 and sh == 0.5)
     chk("parse konv metin → 0.5 fallback", brain._parse_pretrade({"conviction": "yüksek"})[1] == 0.5)
 
+    # ---- SLX post-mortem: _conviction_veto (sertleştirme) ----
+    chk("konv 0.38 < 0.40 → allow VETO'ya çevrildi", brain._conviction_veto("allow", 0.38, 0.40) == "veto")
+    chk("konv 0.50 ≥ 0.40 → allow kalır", brain._conviction_veto("allow", 0.50, 0.40) == "allow")
+    chk("zaten veto → veto kalır", brain._conviction_veto("veto", 0.9, 0.40) == "veto")
+    chk("eşik None → değişmez", brain._conviction_veto("allow", 0.1, None) == "allow")
+    chk("konv None → değişmez", brain._conviction_veto("allow", None, 0.40) == "allow")
+
     # ---- _liq_text (prompt yorumu) ----
     chk("_liq_text + → boğa", "boğa" in brain._liq_text(0.6))
     chk("_liq_text − → ayı", "ayı" in brain._liq_text(-0.6))

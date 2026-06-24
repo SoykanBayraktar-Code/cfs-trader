@@ -261,11 +261,20 @@ def scan_pullback_momentum(cfg, regime):
 
 
 def _regime_filter(regime_name, cands, cfg):
-    """KES+YOĞUNLAŞ (06-24): RANGE rejiminde FRESH adaylarını ele — veri: RANGE|FRESH iki yön de NEGATİF
-    (RANGE|LONG -0.54R, RANGE|SHORT -0.16R). config signals.skip_range_fresh ile. SAF, test edilebilir."""
-    if not (cfg.signals.get("skip_range_fresh", False) and regime_name == "RANGE"):
-        return cands
-    return [c for c in cands if c.status != "FRESH"]
+    """Rejim-bazlı aday eleme (SAF, test edilebilir):
+    - skip_range_fresh: RANGE'de FRESH ele (veri: RANGE|FRESH iki yön negatif).
+    - skip_counter_regime: TERS-rejim ele — TREND_DOWN'da LONG, TREND_UP'ta SHORT (SLX post-mortem: piyasa
+      short'ken PULLBACK-MOM LONG açtı; TREND_DOWN|LONG|PULLBACK-MOM beklenti ~0, outlier-bağımlı). Tüm kaynaklar."""
+    sig = cfg.signals
+    out = cands
+    if sig.get("skip_range_fresh", False) and regime_name == "RANGE":
+        out = [c for c in out if c.status != "FRESH"]
+    if sig.get("skip_counter_regime", False):
+        if regime_name == "TREND_DOWN":
+            out = [c for c in out if c.side != "LONG"]    # düşüş trendinde LONG açma
+        elif regime_name == "TREND_UP":
+            out = [c for c in out if c.side != "SHORT"]    # yükseliş trendinde SHORT açma
+    return out
 
 
 def scan_all(cfg):

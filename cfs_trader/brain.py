@@ -182,6 +182,14 @@ def _macro_context(cfg):
     return data
 
 
+def _conviction_veto(dec, conv, veto_below):
+    """SERTLEŞTİRME (SLX post-mortem): konviksiyon eşik altındaysa allow→veto. SAF, test edilebilir.
+    (#44: brain konv 0.38 ile 'düşük konviksiyon' dedi ama ALLOW verdi → zarar. Artık düşük konv = veto.)"""
+    if dec == "allow" and veto_below is not None and conv is not None and float(conv) < float(veto_below):
+        return "veto"
+    return dec
+
+
 def _parse_pretrade(v):
     """SAF: brain pretrade çıktısını ayrıştır → (decision, conviction, size_hint, reason). Test edilebilir."""
     dec = str(v.get("decision", "allow")).strip().lower()
@@ -241,7 +249,12 @@ def pretrade_review(cfg, cand, tape_raw=None, store=None, model=None, timeout=No
          cand.tape_verdict, cand.tape_score, getattr(cand, "risk_mult", 1.0), tape_txt, ctx_txt, learn)
 
     v = _ask(_PRETRADE_SYS, user, model=model, timeout=timeout)
-    return _parse_pretrade(v)
+    dec, conv, sh, reason = _parse_pretrade(v)
+    vb = s.get("veto_below_conviction")
+    new_dec = _conviction_veto(dec, conv, vb)
+    if new_dec != dec:
+        reason = "düşük konviksiyon %.2f<%s → VETO (sertleştirme); %s" % (conv, vb, reason)
+    return new_dec, conv, sh, reason
 
 
 # ═══════════════════════ 3) İŞLEM-SONRASI POST-MORTEM ═══════════════════════
