@@ -58,6 +58,19 @@ def main():
     st, _ = risk.size_position(cfg2, Binance(), tilted, equity=65, mark=100)
     chk("tilt=0.6 → notional ~0.6× (küçültür)", sb and st and abs(st.notional - sb.notional * 0.6) < sb.notional * 0.05)
 
+    # ---- KES+YOĞUNLAŞ: _regime_filter (RANGE'de FRESH ele) ----
+    def mk(sym, status): return Candidate(symbol=sym, side="LONG", entry=1, stop=0.98, tp=1.1, rr=5,
+                                          score=3, atr_pct=2, status=status, regime="RANGE", bias="LONG")
+    cands = [mk("A", "FRESH"), mk("B", "PULLBACK-MOM"), mk("C", "FRESH")]
+    class CfgRF:
+        def __init__(self, skip): self.signals = {"skip_range_fresh": skip}
+    out = signals._regime_filter("RANGE", cands, CfgRF(True))
+    chk("RANGE + skip → FRESH elendi, diğeri kaldı", [c.symbol for c in out] == ["B"])
+    out = signals._regime_filter("TREND_DOWN", cands, CfgRF(True))
+    chk("TREND_DOWN + skip → hepsi kaldı (sadece RANGE'de eler)", len(out) == 3)
+    out = signals._regime_filter("RANGE", cands, CfgRF(False))
+    chk("RANGE + skip kapalı → hepsi kaldı", len(out) == 3)
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 

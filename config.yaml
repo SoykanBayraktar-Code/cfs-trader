@@ -31,13 +31,14 @@ signals:
   scan_min_vol: 10000000          # GENİŞLETİLDİ 30M→10M (daha çok/erken hareket eden parite; pump'lar düşük-hacimde başlar)
   scan_pool: 60                   # GENİŞLETİLDİ 40→60 (en çok yükselen 30 + düşen 30)
   scan_top: 16                    # GENİŞLETİLDİ 12→16 (havuzdan dönen aday sayısı)
+  skip_range_fresh: true          # KES+YOĞUNLAŞ (06-24): RANGE rejiminde FRESH girişi YOK (veri: RANGE|FRESH iki yön negatif)
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
 
 momentum:
   # Anomali/momentum sinyal KAYNAKLARI — scan_v3'e EK. Hepsi tape CONFIRM + risk-gate + trailing'den geçer.
   # Amaç: ani patlama / pre-pump birikim yakalamak. tape kapısı sahte/tükenmiş pump'ı eler.
-  enabled: true
-  sources: [oi_surge]        # momentum_scan ÇIKARILDI (0/3, tepe-satma); pullback-girişi gerekir, sonra
+  enabled: false             # KES (06-24): OI-SURGE 0/2 -2.10R + MOMENTUM 0/3 -3.54R → tüm momentum bloğu KAPATILDI
+  sources: [oi_surge]        # (enabled:false iken etkisiz) momentum_scan 0/3 tepe-satma; oi_surge 0/2 kaybetti
   max_per_tick: 4            # her kaynaktan tik başına en fazla aday (tape bütçesini taşırmaz)
   sl_atr_mult: 1.5           # stop = giriş ∓ 1.5×ATR (momentum'da yapısal pullback yok)
   tp_rr: 5.0                 # PTJ 5:1 — tp = giriş ± 5R (trailing üstünü toplar)
