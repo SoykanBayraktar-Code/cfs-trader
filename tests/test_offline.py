@@ -33,10 +33,13 @@ class FakeBinance:
     def cancel_all(self, s): return {}
 
 
-def cand(side="LONG", entry=100, stop=98, tp=106, tape="CONFIRM"):
+def cand(side="LONG", entry=100, stop=98, tp=106, tape="CONFIRM", tape_score=None):
+    # CONFIRM→3.5 (confidence=1.0→conf_mult=1.0, temel sizing izole); CAUTION→1.0 (skor-kapısı 2.2 reddi)
+    if tape_score is None:
+        tape_score = 3.5 if tape == "CONFIRM" else 1.0
     return Candidate(symbol="TESTUSDT", side=side, entry=entry, stop=stop, tp=tp,
                      rr=3.0, score=8, atr_pct=2.0, status="FRESH", regime="RANGE",
-                     bias="BOTH", tape_verdict=tape)
+                     bias="BOTH", tape_verdict=tape, tape_score=tape_score)
 
 
 def main():

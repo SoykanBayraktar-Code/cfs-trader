@@ -71,6 +71,24 @@ def main():
     out = signals._regime_filter("RANGE", cands, CfgRF(False))
     chk("RANGE + skip kapalı → hepsi kaldı", len(out) == 3)
 
+    # ---- DİNAMİK BOYUT: _confidence + dynamic_risk_pct ----
+    from cfs_trader import risk as R
+    chk("confidence tape CONFIRM(3.0) tek → 0.75", R._confidence(3.0, None, 0, None) == 0.75)
+    chk("confidence tape min-pass 2.2 → 0.35", R._confidence(2.2, None, 0, None) == 0.35)
+    chk("confidence tape 1.0 → 0 (clip)", R._confidence(1.0, None, 0, None) == 0.0)
+    chk("confidence learner n<3 atlanır", R._confidence(3.0, 0.5, 2, None) == 0.75)
+    chk("confidence tape+learner+brain ortalama", abs(R._confidence(3.0, 0.5, 5, 0.8) - round((0.75+1.0+0.8)/3,3)) < 1e-9)
+    chk("confidence brain düşük → ortalama düşer", R._confidence(3.0, None, 0, 0.2) == round((0.75+0.2)/2,3))
+
+    class CfgDyn:
+        def __init__(self, en): self._en=en
+        def get(self, k, d=None): return {"enabled": self._en, "min_frac": 0.3} if k=="dynamic_sizing" else (d or {})
+    chk("conf_mult conf=0 → min_frac 0.3", R.dynamic_conf_mult(CfgDyn(True), 0.0) == 0.3)
+    chk("conf_mult conf=1 → tam 1.0", R.dynamic_conf_mult(CfgDyn(True), 1.0) == 1.0)
+    chk("conf_mult conf=0.5 → 0.65", R.dynamic_conf_mult(CfgDyn(True), 0.5) == 0.65)
+    chk("conf_mult ≤1.0 (tam-boyutu aşmaz)", R.dynamic_conf_mult(CfgDyn(True), 5.0) == 1.0)
+    chk("conf_mult kapalı → 1.0", R.dynamic_conf_mult(CfgDyn(False), 0.9) == 1.0)
+
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)
 

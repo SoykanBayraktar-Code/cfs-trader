@@ -47,10 +47,11 @@ class FakeBinance:
     def positions(self, s=None): return []
 
 
-def cand(side="LONG", entry=100, stop=98, tp=110, tape="CONFIRM"):
+def cand(side="LONG", entry=100, stop=98, tp=110, tape="CONFIRM", tape_score=3.5):
+    # tape_score=3.5 → conf_mult=1.0 (tam-boyut; dinamik sizing trailing mekaniğini bozmasın)
     return Candidate(symbol="TESTUSDT", side=side, entry=entry, stop=stop, tp=tp,
                      rr=3.0, score=8, atr_pct=2.0, status="FRESH", regime="RANGE",
-                     bias="BOTH", tape_verdict=tape)
+                     bias="BOTH", tape_verdict=tape, tape_score=tape_score)
 
 
 def main():

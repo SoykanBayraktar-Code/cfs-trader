@@ -101,6 +101,8 @@ class Store:
             "context_tilt": "REAL",        # uygulanan bağlam sizing-tilt'i (≤1.0)
             "brain_conviction": "REAL",    # Faz1 M2: Claude pretrade konviksiyonu 0-1 (SHADOW)
             "brain_size_hint": "REAL",     # Faz1 M2: Claude önerilen boyut çarpanı 0.5-1.0 (SHADOW, uygulanmaz)
+            "sizing_confidence": "REAL",   # kazanç-ihtimali vekili 0-1 (dinamik boyut)
+            "risk_pct_used": "REAL",       # bu işlemde kullanılan dinamik risk% (kasa %'si)
         }
         for col, typ in adds.items():
             if col not in have:

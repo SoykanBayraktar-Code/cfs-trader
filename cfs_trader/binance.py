@@ -113,6 +113,14 @@ class Binance:
                 return float(b["availableBalance"])
         return 0.0
 
+    def wallet_balance(self):
+        """Toplam USDT cüzdan bakiyesi (free DEĞİL — açık-pozisyon margin'i dahil). Bileşik boyutlama için."""
+        bals = self._signed("GET", "/fapi/v2/balance")
+        for b in bals:
+            if b["asset"] == "USDT":
+                return float(b["balance"])
+        return 0.0
+
     def positions(self, symbol=None):
         params = {"symbol": symbol} if symbol else None
         rows = self._signed("GET", "/fapi/v2/positionRisk", params)

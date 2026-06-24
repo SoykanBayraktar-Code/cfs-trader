@@ -31,6 +31,9 @@ class Candidate:
     liq_pull: float = 0.0        # o anki likidasyon-mıknatıs yönü (-1..+1; ölçüm için kaydedilir)
     brain_conviction: float = None   # Faz1 M2: Claude pretrade konviksiyonu 0-1 (SHADOW, ölçüm)
     brain_size_hint: float = None    # Faz1 M2: Claude önerilen boyut çarpanı 0.5-1.0 (SHADOW, henüz uygulanmaz)
+    sizing_confidence: float = None  # kazanç-ihtimali vekili 0-1 (dinamik boyut için)
+    conf_mult: float = 1.0           # kazanç-ihtimaliyle orantılı boyut çarpanı ∈ [min_frac,1.0] (final notional'a)
+    risk_pct_used: float = None      # efektif risk% (kasanın %'si, gösterim)
 
 
 @contextlib.contextmanager

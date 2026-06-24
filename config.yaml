@@ -7,9 +7,21 @@ dry_run: false         # true: emir GÖNDERİLMEZ (paper). false: GERÇEK EMİR 
 budget_usdt: 65.0
 market: futures        # USD-M perpetual
 
+sizing:
+  # KASAYI CANLI OKU (bileşik): boyut sabit $65 yerine gerçek cüzdan bakiyesine göre — kazandıkça büyür, kaybettikçe küçülür.
+  live_equity: true               # false → sabit budget; dry_run'da her zaman budget
+  equity_cap: null                # TAM CANLI (kullanıcı seçimi): tavansız, gerçek cüzdan ($190) ile bileşik; gerçek sınır = max_position_notional_usdt (500)
+
+dynamic_sizing:
+  # KAZANÇ-İHTİMALİYLE ORANTILI BOYUT: boyut çarpanı confidence'a (tape+learner+brain konviksiyon) göre [min_frac,1.0].
+  # Çarpan FİNAL notional'a uygulanır (gerçekten bağlar). GÜVENLİK: ≤1.0 (tam-boyutu AŞMAZ); sinyal kanıtlı-prediktif
+  # DEĞİL → çoğunlukla zayıf-setup'ı KÜÇÜLTÜR (güçlü = tam tavan, zayıf = min_frac×). Ort. daha güvenli.
+  enabled: true
+  min_frac: 0.30                 # en zayıf setup'ın tam-boyuta oranı (conf=0 → %30 boyut; conf=1 → tam)
+
 risk:
   leverage: 5
-  risk_per_trade_pct: 50.0          # bakiyenin %'si — SL'de kaybedilecek TAVAN (margin+SL ile sınırlı, ~%7-15 pratik)
+  risk_per_trade_pct: 50.0          # dynamic_sizing.enabled=false iken kullanılan SABİT taban (şu an dinamik aktif)
   max_concurrent: 3               # 3'e çıkarıldı (günlük kill-switch kapalı, taşma riski yok); PULLBACK-MOM'a slot açar
   daily_max_loss_pct: 0           # 0 = KAPALI (kullanıcı isteğiyle günlük kill-switch kaldırıldı; eyes-open)
   max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı; TEK kalan günlük backstop)

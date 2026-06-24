@@ -34,9 +34,20 @@ def _utcday():
 
 
 def _equity(ctx):
-    # Bot HER ZAMAN sabit budget ($50) ile boyutlanır — kasadaki gerçek bakiye ($202 vb.) bot'u İLGİLENDİRMEZ.
-    # "Kasa müsaitse işlem açabilsin": gerçek serbest margin kontrolü risk.gate'te AYRICA yapılır.
-    return ctx.cfg.budget
+    # CANLI KASA: kazandıkça büyür/kaybettikçe küçülür (bileşik boyutlama). dry_run/hata → budget fallback.
+    # equity_cap ile fat-finger yatırıma karşı tavan; gerçek serbest-margin kontrolü risk.gate'te AYRICA.
+    cfg = ctx.cfg
+    sz = cfg.get("sizing", {}) or {}
+    if cfg.dry_run or not sz.get("live_equity", True):
+        return cfg.budget
+    try:
+        wb = ctx.binance.wallet_balance()
+        if wb and wb > 0:
+            cap = sz.get("equity_cap")
+            return min(wb, float(cap)) if cap else wb
+    except Exception as e:
+        log(ctx, f"[equity] canlı kasa okunamadı ({e!r}) → budget {cfg.budget}")
+    return cfg.budget
 
 
 def log(ctx, msg):
