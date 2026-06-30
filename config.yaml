@@ -42,6 +42,7 @@ risk:
   margin_type: ISOLATED           # KESİNLİKLE isolated — cross YASAK. Set edilemezse işlem AÇILMAZ (kasa+INJ korunur)
 
 signals:
+  trading_paused: true            # 07-01: AUDIT SÜRECİ — canlıda YENİ giriş AÇILMAZ (kullanıcı isteği). Açık pozisyonlar yönetilir. Bitince false yap+restart.
   loop_minutes: 5                 # tarama araligi 10->5 dk (scalp; 06-25)
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler

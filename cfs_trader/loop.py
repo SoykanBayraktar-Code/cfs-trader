@@ -101,6 +101,12 @@ def scan_tick(ctx):
     cfg = ctx.cfg
     day = _utcday()
     st = ctx.store.day_state(day)
+    # [INFO] KALICI DURAKLATMA (07-01): config signals.trading_paused=true iken YENİ giriş açılmaz (audit süreci
+    # [INFO] boyunca kullanıcı isteğiyle). halt_day'in aksine gün-dönümünde SIFIRLANMAZ + restart'a dayanıklı.
+    # [INFO] poll_tick ETKİLENMEZ → açık pozisyonlar (trailing/SL/TP/reconcile) yönetilmeye DEVAM eder.
+    if cfg.signals.get("trading_paused", False):
+        log(ctx, "[tik] TRADING DURAKLATILDI (config trading_paused) — yeni giriş yok; açık pozisyonlar yönetiliyor")
+        return
     if st["halted"]:
         log(ctx, f"[tik] gün durduruldu ({st['halt_reason']}) — tarama atlandı")
         return
