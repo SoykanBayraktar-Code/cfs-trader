@@ -44,25 +44,57 @@ class Binance:
         self._time_offset = int(r["serverTime"]) - int(time.time() * 1000)
         return self._time_offset
 
-    def _public(self, path, params=None, timeout=15):
-        r = self._s.get(self.pub + path, params=params or {}, timeout=timeout)
-        if r.status_code != 200:
+    def _public(self, path, params=None, timeout=15, retries=3):
+        # [INFO] DAYANIKLI public GET (AUDIT #3): 429/418'de Retry-After/backoff + ağ hatasında üstel backoff ile
+        # [INFO] tekrar dener (public=salt-okuma=idempotent, güvenli). Aksi non-200 → BinanceError.
+        for i in range(retries + 1):
+            try:
+                r = self._s.get(self.pub + path, params=params or {}, timeout=timeout)
+            except requests.exceptions.RequestException as e:
+                if i < retries:
+                    time.sleep(min(2 ** i, 8)); continue
+                raise BinanceError(f"{path} ağ hatası: {e}")
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (429, 418) and i < retries:
+                time.sleep(min(float(r.headers.get("Retry-After", 2 ** i)), 30)); continue
             raise BinanceError(f"{path} {r.status_code}: {r.text[:300]}")
-        return r.json()
+        raise BinanceError(f"{path} tüm denemeler tükendi")
 
-    def _signed(self, method, path, params=None, timeout=15):
+    def _signed(self, method, path, params=None, timeout=15, retries=3):
+        # [INFO] DAYANIKLI imzalı istek (AUDIT #3): 429/418 rate-limit'te Retry-After/backoff ile bekler; -1021
+        # [INFO] saat-kaymasında zamanı YENİDEN senkronize edip tekrar dener (uzun uptime NTP-drift'i çözer).
+        # [INFO] GÜVENLİK: ağ hatasında YALNIZ GET (idempotent) tekrar dener — POST/DELETE fırlatır (ÇİFT-EMİR riski yok).
         if not self.key or not self.secret:
             raise BinanceError("API anahtarı yok (secrets.env mode'a göre dolu mu?)")
-        p = dict(params or {})
-        p["timestamp"] = self._ts()
-        p["recvWindow"] = 5000
-        query = urlencode(p)
-        sig = hmac.new(self.secret.encode(), query.encode(), hashlib.sha256).hexdigest()
-        url = f"{self.base}{path}?{query}&signature={sig}"
-        r = self._s.request(method, url, timeout=timeout)
-        if r.status_code != 200:
+        is_get = method.upper() == "GET"
+        for i in range(retries + 1):
+            p = dict(params or {})
+            p["timestamp"] = self._ts()       # her denemede taze zaman (re-sync sonrası doğru imza)
+            p["recvWindow"] = 5000
+            query = urlencode(p)
+            sig = hmac.new(self.secret.encode(), query.encode(), hashlib.sha256).hexdigest()
+            url = f"{self.base}{path}?{query}&signature={sig}"
+            try:
+                r = self._s.request(method, url, timeout=timeout)
+            except requests.exceptions.RequestException as e:
+                if is_get and i < retries:    # yalnız GET: ağ blip'i geçici → backoff + tekrar
+                    time.sleep(min(2 ** i, 8)); continue
+                raise BinanceError(f"{method} {path} ağ hatası: {e}")   # POST/DELETE: çift-emir riski → fırlat
+            if r.status_code == 200:
+                return r.json()
+            if r.status_code in (429, 418):   # rate-limit/ban: istek ÇALIŞMADI → güvenli tekrar
+                if i < retries:
+                    time.sleep(min(float(r.headers.get("Retry-After", 2 ** i)), 30)); continue
+                raise BinanceError(f"{method} {path} {r.status_code} rate-limit: {r.text[:200]}")
+            if "-1021" in r.text and i < retries:   # timestamp recvWindow dışı → re-sync, tekrar (reddedildi=güvenli)
+                try:
+                    self.sync_time()
+                except Exception:
+                    pass
+                continue
             raise BinanceError(f"{method} {path} {r.status_code}: {r.text[:300]}")
-        return r.json()
+        raise BinanceError(f"{method} {path} tüm denemeler tükendi")
 
     # ---------- exchange info / yuvarlama ----------
     def load_filters(self, symbol):
