@@ -35,6 +35,23 @@ class Candidate:
     conf_mult: float = 1.0           # kazanç-ihtimaliyle orantılı boyut çarpanı ∈ [min_frac,1.0] (final notional'a)
     risk_pct_used: float = None      # efektif risk% (kasanın %'si, gösterim)
     leverage_used: int = None        # dinamik kaldıraç (confidence yüksek→büyür, SL-güvenli sınırda)
+    # Faz 0 SHADOW (yalnız ölçüm — karara/sizing'e GİRMEZ):
+    cvd15: float = None              # kline-türevli net-taker fraksiyonu son 15dk (-1..+1)
+    cvd30: float = None              # ... 30dk
+    cvd60: float = None              # ... 60dk
+    funding: float = None           # anlık funding oranı
+    basis_bps: float = None         # spot-perp basis (bps): (mark-index)/index
+    flow_regime: str = None         # AKIS_UP/DOWN, DIVERJANS_AYI/BOGA, NOTR
+    confluence: int = None          # yön ile uyuşan bağımsız eksen sayısı (0-5)
+    # Faz 1 SHADOW (scalp/coiled-breakout bağlamları — yalnız ölçüm, karara/sizing'e GİRMEZ):
+    squeeze_pct: float = None        # BBW yüzdelik (düşük=sıkışık)
+    atr_contraction: float = None    # ATR şimdi/ort (<1=daralıyor)
+    oi_trend: float = None           # OI % değişim (yüklenme)
+    cvd_divergence: int = None       # birikim(+1)/dağıtım(-1)/yok(0)
+    book_asym: float = None          # defter asimetrisi (-1..+1; +bid-ağır)
+    vol_surge: float = None          # son bar hacmi/ort (>1.5=patlama)
+    range_pos: float = None          # fiyatın son 20-bar aralığındaki yeri (0=dip,1=tepe) — kırılma kenarı
+    scalp_score: int = None          # yön-uyumlu bileşik scalp setup skoru (0-6)
 
 
 @contextlib.contextmanager
@@ -320,6 +337,33 @@ def confirm_tape(cfg, cand, dur=22):
     return res
 
 
+def confirm_tape_batch(cfg, cands, dur=22, workers=3):
+    """Faz 1: birden çok adayı TEK dış chdir altında EŞZAMANLI tape'ler → 66s yerine ~22s.
+    os.chdir process-wide olduğundan tek context'te çalışılır (chdir-yarışı YOK); tape.tape_check
+    doğrudan çağrılır (iç _engine_cwd yok). scan_tick zaten kilit altında → cwd kimse değiştirmez.
+    {symbol: ham_sonuç} döner; her cand.tape_verdict/tape_score set edilir. FAIL-SAFE (aday hatası→NODATA)."""
+    from concurrent.futures import ThreadPoolExecutor
+    out = {}
+    if not cands:
+        return out
+    with _engine_cwd(cfg.engine_path):   # TEK dış chdir; iç çağrılar chdir YAPMAZ
+        import tape
+
+        def _one(c):
+            try:
+                res = tape.tape_check(c.symbol, c.side, dur=dur)
+            except Exception as e:
+                res = {"verdict": "NODATA", "score_avg": 0.0, "reasons": [f"hata: {type(e).__name__}"]}
+            c.tape_verdict = res.get("verdict", "?")
+            c.tape_score = res.get("score_avg", 0.0)
+            return c.symbol, res
+
+        with ThreadPoolExecutor(max_workers=min(workers, len(cands))) as ex:
+            for sym, res in ex.map(_one, cands):
+                out[sym] = res
+    return out
+
+
 # ───────────────────────── bağlam: liq_pull yumuşak sizing-tilt ─────────────────────────
 def live_liq_pull(cfg, symbol):
     """Canlı likidasyon haritasından liq_pull (-1..+1). Hata/None → None (fail-safe)."""
@@ -358,3 +402,33 @@ def context_tilt(cfg, cand):
         return 1.0, None
     tilt = _tilt_from_pull(lp, cand.side, float(c.get("tilt_strength", 0.4)), float(c.get("min_abs", 0.05)))
     return tilt, round(lp, 4)
+
+
+def ls_tilt(cfg, cand):
+    """Top-trader L/S kalabalik-kontrarian -> (tilt, bias, snap). FAIL-SAFE.
+    tilt in [1-strength,1.0] — yalniz kalabalikla-uyusan islemi kucultur (cap asilmaz)."""
+    c = cfg.get("ls", {}) or {}
+    if not c.get("enabled", False):
+        return 1.0, None, None
+    from . import ls
+    snap = ls.live_snapshot(cand.symbol)
+    b = ls.bias(snap, float(c.get("scale", 0.2))) if snap else None
+    if b is None:
+        return 1.0, None, snap
+    tilt = _tilt_from_pull(b, cand.side, float(c.get("tilt_strength", 0.3)), float(c.get("min_abs", 0.35)))
+    return tilt, round(b, 4), snap
+
+def squeeze_tilt(cfg, cand):
+    """coinalyze likidasyon squeeze-farkindalik -> tilt. imb>0=short-squeeze(LONG favori).
+    Bize KARSI squeeze -> kucult. Ince coin (n_bars/OI dusuk) -> dokunma. FAIL-SAFE reduce-only."""
+    c = cfg.get("squeeze", {}) or {}
+    if not c.get("enabled", False):
+        return 1.0
+    from . import cz
+    sq = cz.parse_squeeze(getattr(cand, "cz_snapshot", None))
+    if not sq:
+        return 1.0
+    imb, nbars, oi = sq.get("imb"), sq.get("n_bars") or 0, sq.get("oi") or 0
+    if imb is None or nbars < c.get("min_n_bars", 8) or oi < c.get("min_oi_usd", 5_000_000):
+        return 1.0  # ince coin / veri yok -> dokunma (CBRS dersi)
+    return _tilt_from_pull(float(imb), cand.side, float(c.get("tilt_strength", 0.3)), float(c.get("min_abs", 0.4)))

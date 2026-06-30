@@ -47,6 +47,34 @@ class FakeBinance:
     def positions(self, s=None): return []
 
 
+class StrictFakeBinance(FakeBinance):
+    """Binance -4130 kuralını taklit eder: aynı anda yalnız 1 AKTİF closePosition SL olabilir.
+    Eski iptal edilmeden ikinci place → -4130 (eski 'önce-koy' bug'ını yeniden üretir).
+    fail_target=True iken target_price'a konan emir -2021 (would immediately trigger) verir →
+    restore (geri koyma) yolunu test eder. Tüm çağrılar sıralı `events`'e yazılır."""
+    def __init__(self, price, fail_target=False):
+        super().__init__(price)
+        self.active_sl = set()      # iptal edilmemiş (aktif) SL algoId'leri
+        self.events = []            # ("place", price) | ("cancel", algoId) — sıralı
+        self.fail_target = fail_target
+        self.target_price = None
+    def place_stop_market(self, sym, side, price, close_position=True, qty=None):
+        self.events.append(("place", round(price, 4)))
+        if self.fail_target and self.target_price is not None and abs(price - self.target_price) < 1e-6:
+            raise RuntimeError('algoOrder 400: {"code":-2021,"msg":"would immediately trigger"}')
+        if self.active_sl:          # zaten aktif closePosition SL var → -4130
+            raise RuntimeError('algoOrder 400: {"code":-4130,"msg":"closePosition order existing"}')
+        self._n += 1
+        aid = f"SL{self._n}"
+        self.active_sl.add(aid)
+        self.placed_sl.append((aid, price))
+        return {"algoId": aid}
+    def cancel_algo_order(self, sym, aid):
+        self.events.append(("cancel", str(aid)))
+        self.active_sl.discard(str(aid))
+        return super().cancel_algo_order(sym, aid)
+
+
 def cand(side="LONG", entry=100, stop=98, tp=110, tape="CONFIRM", tape_score=3.5):
     # tape_score=3.5 → conf_mult=1.0 (tam-boyut; dinamik sizing trailing mekaniğini bozmasın)
     return Candidate(symbol="TESTUSDT", side=side, entry=entry, stop=stop, tp=tp,
@@ -152,6 +180,42 @@ def main():
     b3.price = 105.0
     moved = trailing.manage(cfg, b3, store3, None, None)
     chk("trailing_enabled=false → SL taşınmaz", moved == [] and abs(sl_of(store3, tid3)["sl"]-98) < 0.01)
+
+    # ===== -4130 BUG-FIX: önce-iptal-sonra-koy (eski sıra Binance'te HER ZAMAN reddediliyordu) =====
+    cfg._d["exits"]["trailing_enabled"] = True
+    store4 = Store(os.path.join(tempfile.mkdtemp(), "t4.db"))
+    b4 = StrictFakeBinance(100.0)   # aynı yönde 2. closePosition SL'i -4130 ile reddeder
+    c4 = cand()                      # LONG entry 100, SL 98
+    g4 = risk.gate(cfg, store4, b4, c4, eq, 100.0, day, learner)
+    tid4 = executor.enter(cfg, b4, store4, c4, g4.sizing, 100.0, day)
+    b4.price = 101.6                 # +0.8R → breakeven
+    moved4 = trailing.manage(cfg, b4, store4, None, None)
+    row4 = sl_of(store4, tid4)
+    chk(f"-4130 senaryosu: breakeven taşındı (SL≈100.05 BE) (={row4['sl']},{row4['trail_state']})",
+        row4["trail_state"] == "BE" and abs(row4["sl"]-100.05) < 0.02 and moved4 != [])
+    # KRİTİK: eski SL iptali, yeni SL koymadan ÖNCE gelmeli (yoksa -4130 → eski bug)
+    ev = b4.events
+    cancel_i = next((i for i, e in enumerate(ev) if e[0] == "cancel" and e[1] == "SL1"), -1)
+    place_i = next((i for i, e in enumerate(ev) if e[0] == "place" and abs(e[1]-100.05) < 1e-6), -1)
+    chk(f"SIRA: eski SL iptali (SL1) YENİ SL koymadan ÖNCE (cancel@{cancel_i} < place@{place_i})",
+        cancel_i >= 0 and place_i >= 0 and cancel_i < place_i)
+
+    # ===== restore-on-fail: hedef -2021 ile reddedilirse eski seviye geri konar, pozisyon korunur =====
+    store5 = Store(os.path.join(tempfile.mkdtemp(), "t5.db"))
+    b5 = StrictFakeBinance(100.0, fail_target=True)
+    b5.target_price = 100.05         # breakeven hedefi reddedilecek (would immediately trigger)
+    c5 = cand()
+    g5 = risk.gate(cfg, store5, b5, c5, eq, 100.0, day, learner)
+    tid5 = executor.enter(cfg, b5, store5, c5, g5.sizing, 100.0, day)
+    b5.price = 101.6                 # +0.8R → breakeven dener, hedef -2021 → restore
+    trailing.manage(cfg, b5, store5, None, None)
+    row5 = store5.db.execute("SELECT sl, trail_state, sl_order_id FROM trades WHERE id=?", (tid5,)).fetchone()
+    chk(f"restore: SL eski seviyede (98), durum INIT korundu (={row5['sl']},{row5['trail_state']})",
+        abs(row5["sl"]-98) < 0.01 and row5["trail_state"] == "INIT")
+    chk("restore: eski SL (SL1) iptal edildi", "SL1" in b5.cancelled)
+    chk(f"restore: DB sl_order_id geri-konan emre senkronlandı (≠SL1, ={row5['sl_order_id']})",
+        row5["sl_order_id"] not in (None, "SL1") and str(row5["sl_order_id"]).startswith("SL"))
+    chk("restore: pozisyon hâlâ AÇIK ve TAM 1 aktif SL ile korumalı", store5.open_count() == 1 and len(b5.active_sl) == 1)
 
     print(f"\n=== {n_ok} geçti / {n_fail} kaldı ===")
     sys.exit(0 if n_fail == 0 else 1)

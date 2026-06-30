@@ -31,21 +31,21 @@ dynamic_sizing:
 
 risk:
   leverage: 5
-  risk_per_trade_pct: 50.0          # dynamic_sizing.enabled=false iken kullanılan SABİT taban (şu an dinamik aktif)
+  risk_per_trade_pct: 25.0          # 50→25 (06-26 #5: varyans azalt; en kötü tek kayıp yarıya, R aynı). dynamic taban
   max_concurrent: 3               # 3'e çıkarıldı (günlük kill-switch kapalı, taşma riski yok); PULLBACK-MOM'a slot açar
   daily_max_loss_pct: 0           # 0 = KAPALI (kullanıcı isteğiyle günlük kill-switch kaldırıldı; eyes-open)
   max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı; TEK kalan günlük backstop)
   min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
   max_position_notional_usdt: 500 # 5x * 100; risk.py exchange limitiyle min alır
-  max_sl_pct: 12                  # SL bundan genişse RED — 5x'te likidasyon ~%18-20, SL dolmadan likit olmasın
+  max_sl_pct: 6                   # 12→6 (06-26 #3 tavan: backtest 2-5% bandı kârlı, >5-6% kaybeden); SL bundan genişse RED
   margin_type: ISOLATED           # KESİNLİKLE isolated — cross YASAK. Set edilemezse işlem AÇILMAZ (kasa+INJ korunur)
 
 signals:
-  loop_minutes: 10                # tarama aralığı 15→10 dk (daha sık fırsat taraması)
+  loop_minutes: 5                 # tarama araligi 10->5 dk (scalp; 06-25)
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler
   require_tape_confirm: true      # tape kapısı açık (CONFIRM + tape_min_score üstü CAUTION geçer; VETO hep red)
-  tape_min_score: 2.2             # CONFIRM'e yakın CAUTION eşiği (motor CONFIRM_SCORE=3); 2.7→2.2 daha fazla işlem akışı
+  tape_min_score: 3.0             # CONFIRM-only KALICI varsayilan (06-26 override sabitlendi; CAUTION net -37$, atinca +21$)
   max_tape_checks: 8              # tik başına kaç adayı 22s tape'den geçir (kapsam vs hız; anomali kaynakları eklendi)
   min_rr: 1.0                     # motorun DOĞAL rr kalite kapısı (1.2→1.0, SYN gibi IZLE-pullback'ler geçsin; TP zaten 5R'ye çekilir)
   target_rr: 5.0                  # PTJ 5:1 — TP sabit 5R'ye çekilir (aynı stop, 5R hedef); trailing koşturur. 0=motor TP'si
@@ -56,6 +56,14 @@ signals:
   skip_range_fresh: true          # KES+YOĞUNLAŞ (06-24): RANGE rejiminde FRESH girişi YOK (veri: RANGE|FRESH iki yön negatif)
   skip_counter_regime: true       # SLX POST-MORTEM (06-24): TERS-rejim girişi YOK — TREND_DOWN'da LONG / TREND_UP'ta SHORT engellenir (PULLBACK-MOM dahil)
   engine_path: /root/crypto-futures-scan/engine   # sinyal kütüphanesi (lokal dev'de CFS_ENGINE_PATH ile override)
+  scalp_entry:                    # PATLAMADAN HEMEN ÖNCE giriş (Faz 2): aşırı sıkışma+kenara dayanma+yön — vol_surge ŞART DEĞİL
+    enabled: true                 # VETO + diğer TÜM emniyetler (margin/SL-band/kill/çift-giriş/mıknatıs/brain) AYNEN uygulanır
+    max_squeeze_pct: 12           # BBW yüzdelik ≤ bu (aşırı sıkışma = yay sonuna kadar gerilmiş)
+    max_atr_contraction: 0.9      # ATR şimdi/ort ≤ bu (daralıyor)
+    edge_pct: 0.70                # LONG: range_pos≥0.70 (tepeye dayanmış), SHORT: ≤0.30 (dibe) — kırılma kenarı
+    min_book_asym: 0.10           # yön teyidi: defter vakumu (LONG +, SHORT -)
+    min_oi_trend: 0.5             # alternatif yön teyidi: OI yüklenmesi %
+    max_vol_surge: 1.8            # HENÜZ PATLAMAMIŞ olsun (üstü = patlama başladı = geç kaldık)
 
 momentum:
   # Anomali/momentum sinyal KAYNAKLARI — scan_v3'e EK. Hepsi tape CONFIRM + risk-gate + trailing'den geçer.
@@ -88,15 +96,82 @@ pullback_momentum:
   max_per_tick: 3            # tik başına en fazla pullback adayı
   min_tape_score: 2.2        # 3.0→2.2 (base ile aynı; ilk girişleri görüp ölçmek için gevşetildi)
 
+entry:
+  # MAKER-first giris (#2, 06-29): GTX post-only limit (maker fee ~yari taker) + dolmazsa TAKER fallback
+  # (islem ASLA kacmaz). SL ILK dolumda konur -> ciplak pencere yok. maker_enabled:false -> klasik market.
+  maker_enabled: true
+  maker_timeout_s: 10        # limit bu surede dolmazsa kalani market ile tamamla (tam boyut garantisi)
+  maker_poll_s: 1.0          # dolum kontrol araligi (saniye)
+
 exits:
   # Aşama 1 — Breakeven + Trailing stop (kazananı koştur). Hard SL hep borsada; çıplak kalmaz.
   trailing_enabled: true
-  breakeven_at_r: 0.8        # +0.8R'ye ulaşınca SL → girişe (breakeven). Zararı sıfırlar.
+  sl_min_pct: 2.0            # 06-26 #3 taban: SL bundan darsa giriş RED (gürültü-stop bandı; backtest 0-2% net kaybeden). max_sl_pct ile birlikte 2-6% bandı. 0=kapalı
+  breakeven_at_r: 0.6        # +0.8R'ye ulaşınca SL → girişe (breakeven). Zararı sıfırlar.  # 06-29 P1: mutevazi kazanci erken kilitle (0.8->0.6, kuyruk korur)
   breakeven_buffer_pct: 0.05 # SL'yi girişin %0.05 lehine koy (round-trip fee'yi karşılar)
   trail_after_r: 1.5         # +1.5R sonrası trailing (5R hedefe nefes ver, erken kesme)
   trail_distance_r: 1.0      # SL = tepe − 1.0R (runner'ı boğmaz; 5R'ye giderken pullback'lere izin)
   min_sl_move_pct: 0.05      # SL en az bu kadar (%) iyileşmezse taşıma (gereksiz emir/fee yok)
   notify_moves: true         # breakeven/trailing geçişlerinde Telegram bildir
+  book_tp:                    # v1: emir-defteri tabanlı TP (sabit 5R yerine gerçekçi direnç). None→5R fallback
+    enabled: false  # 06-29 P1 B-lite: kuyrugu kesmesin, TP=5R+trailing
+    min_r: 1.5               # TP en az bu kadar R uzakta (kötü RR engelle)
+    max_r: 6.0               # TP en fazla bu kadar R (çok uzak küme alma)
+    bin_pct: 0.5             # likidite kovası genişliği (%)
+    before_pct: 0.1          # kümenin %0.1 önüne koy (duvar emilmeden çık)
+    depth: 1000              # order-book derinliği
+
+# Notion otomatik işlem loglama (İşlem Kayıt Defteri). FAIL-SAFE: hata trade'i etkilemez.
+notion:
+  enabled: true                                 # 2026-06-27 aktif (NOTION_TOKEN secrets.env'de, DB "cryptodatabase" ile paylaşıldı)
+  database_id: "168a3801da20413daf65a5e7d277d3ab"  # cfs-trader — İşlem Kayıt Defteri DB
+  api_version: "2022-06-28"
+  timeout: 8
+
+# WS kline deposu (Faz 1-A) — REST yükünü azaltır + en taze veri. FAIL-SAFE (REST fallback).
+wsklines:
+  enabled: false       # GEÇİCİ KAPALI: tek-process'te full-scale event-loop contention (çözüm: ayrı servis)
+  serve: false         # datahub+mtf.get_klines_mtf'i depodan besle — PARITY+kararlılık kanıtlanınca true
+  backfill_rate: 5     # saniyede max REST backfill çağrısı (rate-limit güvenliği)
+  min_vol: 10000000    # depo evreni hacim eşiği (scan ile aynı)
+
+derivs:
+  # TUREV-CONFLUENCE sentez katmani (06-29). Mevcut cz.py(funding/OI/liq)+ls.py(bias)+scalp(oi_trend)+F&G'yi
+  # YONLE kiyaslar -> derivs_bias/score. SHADOW-first: loglar, karari DEGISTIRMEZ. KALIBRE (67-islem veri):
+  # ls_bias(+0.59) & oi_trend(+0.53) en guclu -> agirlik 1.0; funding/liq zayif -> 0.4; F&G yon-gurultu -> 0.0; cvd ÖLÜ -> yok.
+  enabled: false             # ACTIVE (karara etki) — AYRI ONAY + A/B sonrasi acilir
+  shadow: true               # SHADOW: hesapla+logla (karar/yon/boyut/kaldirac DEGISMEZ)
+  min_components: 2          # bu kadar aktif girdi yoksa NEUTRAL (fail-open)
+  confirm_thresh: 0.35       # skor >= bu -> CONFIRM
+  conflict_thresh: 0.35      # skor <= -bu -> CONFLICT
+  oi_collapse_norm: 1.0      # oi_trend bu degere normalize (kalibre: kaybeden medyan oi_trend ~-1.58)
+  funding_div_elevated: 0.0005   # cz funding_div bu ustu 'yuksek' (alt-perp olceginde minik)
+  fng_extreme_lo: 25         # F&G <= bu = asiri korku (yalniz loglanir, agirlik 0)
+  fng_extreme_hi: 75         # F&G >= bu = asiri acgozluluk (yalniz loglanir, agirlik 0)
+  weights:
+    ls: 1.0                  # kalabalik-kontraryan (en guclu ayristirici)
+    oi: 1.0                  # OI trend (cokus=zayif katilim)
+    funding: 0.4             # yalniz all_pos/all_neg ikili (temiz crowd sinyali)
+    liq: 0.4                 # likidasyon imbalance
+    fng: 0.0                 # F&G yon-gurultu (kalibrasyon+backtest) -> SHADOW-log only
+
+pnd:
+  # PUMP & DUMP faz tespiti (06-29, La Morgia 2023). aggTrades rush-order spike -> faz.
+  # SHADOW-first: loglar, KARARI DEGISTIRMEZ. Esikler perp'e kalibre edilecek (Faz C backtest).
+  enabled: false             # ACTIVE (defansif veto + dump-short + ofansif) — AYRI ONAY + backtest sonrasi
+  shadow: true               # SHADOW: hesapla+logla (karar/yon/boyut DEGISMEZ)
+  window_min: 20             # rush-order penceresi (dk)
+  chunk_s: 15                # chunk boyutu (sn)
+  recent_chunks: 4           # 'son' = kac chunk (spike olcumu)
+  min_baseline_chunks: 20    # bu kadar baseline chunk yoksa NONE (fail-open)
+  max_pages: 10              # aggTrades sayfalama tavani (yuk siniri)
+  rush_z_thresh: 3.0         # rush-buy spike z-skoru esigi (kalibre: makale spot-12.8 degil, goreli z)
+  price_pos_pump: 0.40       # PUMP_EARLY: fiyat harekette <= bu (dip)
+  price_pos_late: 0.70       # PUMP_LATE: fiyat >= bu (tepe)
+  late_gain_pct: 8.0         # PUMP_LATE alternatif: pencere kazanci >= bu %
+  dump_ratio: 0.45           # DUMPING: buy/(buy+sell) rush oran < bu (sell-baskin)
+  dump_drop_pct: 1.5         # DUMPING: tepeden >= bu % dusus
+  min_gain_pct: 3.0          # DUMPING: once bir pump olmus olmali (>= bu % kazanc)
 
 paths:
   db: data/trader.db
@@ -111,8 +186,29 @@ context:
   # Backtest (25 işlem): liq_pull uyuşan %57 +2.3R vs çelişen %43 −3.2R (n küçük, eyes-open soft tilt). liq_pull trade'lerde kaydedilir → ölçüm sürer.
   enabled: true
   source: liq_pull
-  tilt_strength: 0.4              # çelişen işlemi en fazla %40 küçültür (uyuşan = tam boyut)
+  tilt_strength: 0.15            # 06-29 P1-3: ters-tilt bulgusu (kisilan kazaniyor) -> 0.4->0.15 yumusatildi              # çelişen işlemi en fazla %40 küçültür (uyuşan = tam boyut)
   min_abs: 0.05                   # |liq_pull|<bu → net görüş yok → dokunma (tilt 1.0)
+  skip_conflict_above: 0.5      # |liq_pull|>=bu + ters mıknatıs → GİRME (mıknatısa-karşı işlemi eler)
+
+ls:
+  # Top-trader Long/Short pozisyonlanmasi (Binance /futures/data, ucretsiz, keyless).
+  # SINYAL (backtest L2=tek edge): KALABALIK-KONTRARIAN — global_long (perakende) ekstremse
+  # TERSI favori. crowd cok-LONG -> LONG'u kucult, SHORT tam (kalabaligi fade). YUMUSAK tilt:
+  # yalniz kucultur, notional-cap asilmaz. SHADOW kayit da var. DURUST: edge marjinal (test exp +0.018).
+  enabled: true
+  tilt_strength: 0.3      # kalabalikla-uyusan islemi en fazla %30 kucultur
+  min_abs: 0.35           # |bias|<bu -> dengeli kalabalik -> tilt 1.0 (yalniz ekstremde tilt)
+  scale: 0.2              # (0.5 - global_long)/scale -> bias; global_long~0.7 = tam sinyal
+
+squeeze:
+  # coinalyze likidasyon akisi squeeze-farkindalik. imb>0=short-squeeze(yukari), <0=long-flush(asagi).
+  # Bize KARSI squeeze'e girersek boyut kucult (yumusak, reduce-only). INCE coin korumasi:
+  # n_bars/OI dusukse dokunma (CBRS dersi). DURUST: olculmus edge yok; zamanlama/risk sinyali.
+  enabled: true
+  tilt_strength: 0.3      # karsi-squeeze'i en fazla %30 kucult
+  min_abs: 0.4            # |imbalance|<bu -> belirgin squeeze yok -> tilt 1.0
+  min_n_bars: 8           # bundan az likidasyon bari -> ince coin, dokunma
+  min_oi_usd: 5000000     # OI bundan azsa -> guvenilmez, dokunma
 
 analyst:
   backend: cli                    # cli = Max planı `claude` CLI (ek API anahtarı GEREKMEZ); api = ANTHROPIC_API_KEY
@@ -124,7 +220,7 @@ brain:
   # 1+2) Giriş öncesi ikinci göz — VETO edebilir (asla giriş zorlamaz). only_borderline:true=sadece
   #      tape!=CONFIRM adayları inceler (güçlü CONFIRM beklemeden açılır → hızlı fill, az kontansiyon).
   #      timeout 75→22s: claude yavaşlarsa giriş yolunu uzun bloklamasın.
-  pretrade:       {enabled: true,  model: sonnet, timeout: 22, only_borderline: true, veto_below_conviction: 0.40}  # SLX#44: konv<0.40 → VETO (sertleştirme)
+  pretrade:       {enabled: true,  model: sonnet, timeout: 22, only_borderline: true, veto_below_conviction: 0.55}  # SLX#44: konv<0.40 → VETO (sertleştirme)
   # 3+6) Kapanan işleme 'neden' notu. losses_only:true=sadece kayıplara claude çağrısı (kontansiyon ↓).
   postmortem:     {enabled: true,  model: sonnet, timeout: 22, notify: false, losses_only: true}
   # 8) Günlük strateji raporu + analyst guardrail'li param önerisi (cron: python3 -m cfs_trader.brain daily)

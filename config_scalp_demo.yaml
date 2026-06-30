@@ -1,0 +1,150 @@
+mode: testnet
+dry_run: true
+budget_usdt: 65.0
+market: futures
+sizing:
+  live_equity: true
+  equity_cap: null
+dynamic_leverage:
+  enabled: true
+  base_leverage: 5
+  max_leverage: 8
+  liq_safety_factor: 0.8
+  maint_margin: 0.005
+dynamic_sizing:
+  enabled: true
+  min_frac: 0.3
+risk:
+  leverage: 5
+  risk_per_trade_pct: 50.0
+  max_concurrent: 3
+  daily_max_loss_pct: 0
+  max_consecutive_losses: 999
+  min_notional_usdt: 5.0
+  max_position_notional_usdt: 500
+  max_sl_pct: 12
+  margin_type: ISOLATED
+signals:
+  loop_minutes: 5
+  poll_seconds: 45
+  directions:
+  - LONG
+  - SHORT
+  require_tape_confirm: true
+  tape_min_score: 2.2
+  max_tape_checks: 8
+  min_rr: 1.0
+  target_rr: 1.5
+  max_atr_pct: 6.0
+  scan_min_vol: 10000000
+  scan_pool: 60
+  scan_top: 16
+  skip_range_fresh: true
+  skip_counter_regime: true
+  engine_path: /root/crypto-futures-scan/engine
+momentum:
+  enabled: false
+  sources:
+  - oi_surge
+  max_per_tick: 4
+  sl_atr_mult: 1.5
+  tp_rr: 5.0
+  max_atr_pct: 8.0
+  oi_surge:
+    min_vol: 10000000
+    oi_min: 4.0
+    top: 12
+    classes:
+    - SESSIZ
+    risk_mult: 0.25
+    min_tape_score: 3.0
+    long_only: true
+  momentum_scan:
+    min_vol: 5000000
+    top: 16
+    classes:
+    - ATESLENIYOR
+    risk_mult: 0.5
+    min_tape_score: 4.5
+pullback_momentum:
+  enabled: true
+  min_chg24: 8.0
+  top_gainers: 12
+  min_vol: 10000000
+  pullback_band_pct: 2.0
+  rsi_min: 40
+  rsi_max: 68
+  max_atr_pct: 8.0
+  sl_atr_mult: 1.5
+  risk_mult: 0.5
+  max_per_tick: 3
+  min_tape_score: 2.2
+exits:
+  trailing_enabled: true
+  breakeven_at_r: 0.5
+  breakeven_buffer_pct: 0.05
+  trail_after_r: 0.7
+  trail_distance_r: 0.4
+  min_sl_move_pct: 0.05
+  notify_moves: true
+paths:
+  db: data/paper_scalp.db
+  log: data/trader.log
+telegram:
+  enabled: false
+context:
+  enabled: true
+  source: liq_pull
+  tilt_strength: 0.4
+  min_abs: 0.05
+  skip_conflict_above: 0
+ls:
+  enabled: true
+  tilt_strength: 0.3
+  min_abs: 0.35
+  scale: 0.2
+squeeze:
+  enabled: true
+  tilt_strength: 0.3
+  min_abs: 0.4
+  min_n_bars: 8
+  min_oi_usd: 5000000
+analyst:
+  backend: cli
+brain:
+  enabled: true
+  pretrade:
+    enabled: true
+    model: sonnet
+    timeout: 22
+    only_borderline: true
+    veto_below_conviction: 0.4
+  postmortem:
+    enabled: true
+    model: sonnet
+    timeout: 22
+    notify: false
+    losses_only: true
+  daily:
+    enabled: true
+    model: opus
+    timeout: 300
+    auto_apply: false
+  guardian:
+    enabled: true
+    model: sonnet
+    timeout: 22
+    min_interval_min: 60
+    risk_frac: 1.5
+    llm_min_severity: high
+  learning_guard:
+    enabled: true
+    min_samples: 20
+    expectancy_floor: -0.1
+  breaker:
+    max_fails: 3
+    cooldown_min: 15
+learner:
+  enabled: true
+  min_samples: 20
+  suppress_below_expectancy: -0.1

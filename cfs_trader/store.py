@@ -103,6 +103,33 @@ class Store:
             "brain_size_hint": "REAL",     # Faz1 M2: Claude önerilen boyut çarpanı 0.5-1.0 (SHADOW, uygulanmaz)
             "sizing_confidence": "REAL",   # kazanç-ihtimali vekili 0-1 (dinamik boyut)
             "risk_pct_used": "REAL",       # bu işlemde kullanılan dinamik risk% (kasa %'si)
+            "cz_snapshot": "TEXT",        # coinalyze capraz-borsa funding/OI snapshot (JSON, SHADOW)
+            "ls_bias": "REAL",            # top-trader kalabalik-kontrarian bias (-1..+1)
+            "ls_tilt": "REAL",            # uygulanan L/S sizing-tilt (<=1.0)
+            "ls_snapshot": "TEXT",        # ham lsratio snapshot (JSON, SHADOW)
+            "sq_tilt": "REAL",            # coinalyze squeeze-farkindalik sizing-tilt (<=1.0)
+            "notion_page_id": "TEXT",     # Notion İşlem Kayıt Defteri sayfa id'si (kapanışta güncellemek için)
+            "cvd15": "REAL",              # Faz 0 SHADOW: kline-türevli net-taker fraksiyonu 15dk
+            "cvd30": "REAL",              # ... 30dk
+            "cvd60": "REAL",              # ... 60dk
+            "funding": "REAL",            # anlık funding oranı
+            "basis_bps": "REAL",          # spot-perp basis (bps)
+            "flow_regime": "TEXT",        # akış rejimi etiketi (AKIS_UP/.../NOTR)
+            "confluence": "INTEGER",      # yön-uyumlu bağımsız eksen sayısı (0-5)
+            "squeeze_pct": "REAL",        # Faz 1 SHADOW: BBW yüzdelik (düşük=sıkışık)
+            "atr_contraction": "REAL",    # ATR şimdi/ort (<1=daralıyor)
+            "oi_trend": "REAL",           # OI % değişim (yüklenme)
+            "cvd_divergence": "INTEGER",  # birikim(+1)/dağıtım(-1)/yok(0)
+            "book_asym": "REAL",          # defter asimetrisi (-1..+1)
+            "vol_surge": "REAL",          # son bar hacmi/ort (>1.5=patlama)
+            "range_pos": "REAL",          # fiyatın 20-bar aralığındaki yeri (0=dip,1=tepe) — kırılma kenarı
+            "scalp_score": "INTEGER",     # yön-uyumlu bileşik scalp setup skoru (0-6)
+            "derivs_bias": "TEXT",        # türev-confluence verdict (CONFIRM/CAUTION/CONFLICT/NEUTRAL) — SHADOW
+            "derivs_score": "REAL",       # türev-confluence ağırlıklı skoru (-1..+1, yönle hizalı) — SHADOW
+            "derivs_snapshot": "TEXT",    # derivs bileşen detayı + F&G (JSON) — SHADOW
+            "pnd_phase": "TEXT",          # Pump&Dump fazı (NONE/PUMP_EARLY/PUMP_LATE/DUMPING) — SHADOW
+            "pnd_score": "REAL",          # rush-order spike z-skoru — SHADOW
+            "pnd_snapshot": "TEXT",       # P&D ham metrik detayı (JSON) — SHADOW
         }
         for col, typ in adds.items():
             if col not in have:
@@ -128,6 +155,15 @@ class Store:
                pnl_usdt=?, r_multiple=?, fees_usdt=? WHERE id=?""",
             (int(time.time()), exit_price, exit_reason, pnl_usdt, r_multiple, fees_usdt, trade_id),
         )
+        self.db.commit()
+
+    def get_trade(self, trade_id):
+        """Tek işlemin tam satırı (Row) | None — Notion loglama property'lerini kurmak için."""
+        return self.db.execute("SELECT * FROM trades WHERE id=?", (trade_id,)).fetchone()
+
+    def set_notion_page_id(self, trade_id, page_id):
+        """Girişte oluşturulan Notion sayfa id'sini sakla (kapanışta aynı satır güncellenir)."""
+        self.db.execute("UPDATE trades SET notion_page_id=? WHERE id=?", (str(page_id), trade_id))
         self.db.commit()
 
     def update_trade_sl(self, trade_id, new_sl, sl_order_id=None, peak_price=None, trail_state=None):

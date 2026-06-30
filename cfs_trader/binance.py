@@ -129,6 +129,10 @@ class Binance:
     def mark_price(self, symbol):
         return float(self._public("/fapi/v1/premiumIndex", {"symbol": symbol})["markPrice"])
 
+    def book_ticker(self, symbol):
+        """En iyi bid/ask (maker limit girişi için). Public, hafif."""
+        return self._public("/fapi/v1/ticker/bookTicker", {"symbol": symbol})
+
     def set_leverage(self, symbol, leverage):
         if self.dry_run:
             return {"dry_run": True, "leverage": leverage}
@@ -170,6 +174,15 @@ class Binance:
     def place_market(self, symbol, side, qty, reduce_only=False):
         """side: BUY|SELL. LONG giriş=BUY, SHORT giriş=SELL. (Düz emir — /fapi/v1/order.)"""
         p = {"symbol": symbol, "side": side, "type": "MARKET", "quantity": qty}
+        if reduce_only:
+            p["reduceOnly"] = "true"
+        return self._send_order(p)
+
+    def place_limit(self, symbol, side, qty, price, tif="GTX", reduce_only=False):
+        """LIMIT emir. tif=GTX = post-only (maker garantisi; alıcı/satıcı olursa REDDEDİLİR → caller taker'a düşer).
+        Düz emir (/fapi/v1/order). dry_run kapısı geçerli."""
+        p = {"symbol": symbol, "side": side, "type": "LIMIT", "quantity": qty,
+             "price": price, "timeInForce": tif}
         if reduce_only:
             p["reduceOnly"] = "true"
         return self._send_order(p)
@@ -221,6 +234,12 @@ class Binance:
 
     def get_order(self, symbol, order_id):
         return self._signed("GET", "/fapi/v1/order", {"symbol": symbol, "orderId": order_id})
+
+    def cancel_order(self, symbol, order_id):
+        """Tek bir DÜZ emri (limit) iptal et. dry_run'da no-op. (Algo SL/TP için cancel_algo_order.)"""
+        if self.dry_run:
+            return {"dry_run": True, "orderId": order_id}
+        return self._signed("DELETE", "/fapi/v1/order", {"symbol": symbol, "orderId": order_id})
 
     def get_algo_order(self, symbol, algo_id):
         return self._signed("GET", "/fapi/v1/algoOrder", {"symbol": symbol, "algoId": algo_id})

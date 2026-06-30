@@ -65,6 +65,11 @@ def size_position(cfg, binance, cand, equity, mark):
     max_sl = r.get("max_sl_pct", 12) / 100.0
     if sl_dist > max_sl:
         return None, f"SL çok geniş (%{sl_dist*100:.1f} > %{r.get('max_sl_pct', 12)}) — kaldıraçta likidasyon riski"
+    # SL TABANI (#3, 06-26): çok dar SL gürültüye stop oluyor (backtest 0-2% bandı net kaybeden) → bandın
+    # dışını ELE (genişletmek tavana-takılı risk'i artırırdı). Yalnız 2-6% bandında işlem aç. 0=kapalı.
+    min_sl = float((cfg.get("exits", {}) or {}).get("sl_min_pct", 0) or 0) / 100.0
+    if min_sl > 0 and sl_dist < min_sl:
+        return None, f"SL çok dar (%{sl_dist*100:.2f} < %{min_sl*100:.0f}) — gürültü-stop bandı, giriş yok"
 
     # DİNAMİK KALDIRAÇ: confidence yüksekse büyür (base→max), SL-güvenli sınırda (likidasyon-öncesi-SL garantisi)
     lev = leverage_for(cfg, getattr(cand, "sizing_confidence", None), sl_dist)
@@ -77,7 +82,9 @@ def size_position(cfg, binance, cand, equity, mark):
     risk_mult = getattr(cand, "risk_mult", 1.0) or 1.0
     ctx_tilt = getattr(cand, "context_tilt", 1.0) or 1.0   # bağlam (liq_pull) yumuşak tilt ∈ [1-strength,1.0]
     conf_mult = getattr(cand, "conf_mult", 1.0) or 1.0     # kazanç-ihtimaliyle orantılı (final notional'a → bağlar)
-    notional = min(desired_notional, max_notional) * risk_mult * ctx_tilt * conf_mult
+    ls_t = getattr(cand, "ls_tilt", 1.0) or 1.0   # top-trader L/S kalabalik-kontrarian tilt
+    sq_t = getattr(cand, "sq_tilt", 1.0) or 1.0   # coinalyze squeeze-farkindalik tilt
+    notional = min(desired_notional, max_notional) * risk_mult * ctx_tilt * ls_t * sq_t * conf_mult
 
     min_notional = binance.min_notional(cand.symbol)
     if notional < min_notional:
@@ -97,8 +104,9 @@ def size_position(cfg, binance, cand, equity, mark):
                   risk_usdt=round(actual_risk, 4), sl_dist_pct=round(sl_dist * 100, 2)), ""
 
 
-def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
-    """Tüm emniyetleri sırayla uygula. GateResult döndürür."""
+def gate(cfg, store, binance, cand, equity, mark, day, learner=None, scalp_ok=False):
+    """Tüm emniyetleri sırayla uygula. GateResult döndürür.
+    scalp_ok=True: korumalı scalp yolu — tape CONFIRM/skor şartını GEVŞETİR (VETO + diğer TÜM emniyetler aynen)."""
     r = cfg.risk
     st = store.day_state(day)
 
@@ -136,15 +144,25 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None):
     if cfg.signals.get("require_tape_confirm", True):
         tape_min = cfg.signals.get("tape_min_score", 3.0)
         if cand.tape_verdict == "VETO":
-            return GateResult(False, "tape VETO (güçlü ters akış)")
-        if cand.tape_verdict != "CONFIRM" and cand.tape_score < tape_min:
+            return GateResult(False, "tape VETO (güçlü ters akış)")   # scalp yolu DAHİL her zaman bloklar
+        if not scalp_ok and cand.tape_verdict != "CONFIRM" and cand.tape_score < tape_min:
             return GateResult(False, f"tape {cand.tape_verdict} skor {cand.tape_score:.1f} < {tape_min}")
 
     # kaynak-bazlı SIKI tape eşiği (momentum: gevşemeden bağımsız, skor da yüksek olmalı)
     min_ts = getattr(cand, "min_tape_score", 0.0) or 0.0
-    if min_ts and cand.tape_score < min_ts:
+    if not scalp_ok and min_ts and cand.tape_score < min_ts:
         return GateResult(False, f"tape skoru zayıf {cand.tape_score:.1f} < {min_ts} (sıkı eşik)")
 
+
+    # MIKNATIS-ÇELİŞKİ FİLTRESİ (06-25): güçlü likidasyon mıknatısına KARŞI işlem açma.
+    # liq_pull>0=yukarı mıknatıs (SHORT'a karşı), <0=aşağı (LONG'a karşı).
+    # Veri: mıknatısa-karşı +0.10R vs uyuşan +0.33R. |liq_pull|>=eşik + çelişki → REJECT.
+    _cx = cfg.get("context", {}) or {}
+    _skip = _cx.get("skip_conflict_above", 0)
+    _lp = getattr(cand, "liq_pull", 0.0) or 0.0
+    if _cx.get("enabled") and _skip and abs(_lp) >= _skip:
+        if (_lp > 0 and cand.side == "SHORT") or (_lp < 0 and cand.side == "LONG"):
+            return GateResult(False, f"mıknatısa karşı güçlü çelişki (liq_pull={_lp:+.2f} {cand.side}) — giriş yok")
     # learner baskısı (Faz 3 — enabled değilse atlanır)
     if learner is not None:
         sup, why = learner.suppressed(cand)
