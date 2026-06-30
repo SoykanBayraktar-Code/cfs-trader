@@ -89,6 +89,10 @@ def main():
     cfg._d["exits"] = {"trailing_enabled": True, "breakeven_at_r": 0.8, "breakeven_buffer_pct": 0.05,
                        "trail_after_r": 1.0, "trail_distance_r": 0.7, "min_sl_move_pct": 0.05,
                        "notify_moves": False}
+    # 07-01 AUDIT #2: trailing birim-testi prod risk tuning'inden BAĞIMSIZ → sabit pozisyon boyutu (PnL>5 senaryosu)
+    cfg._d["risk"]["risk_per_trade_pct"] = 25.0   # sabit taban (prod %1.5 değil)
+    cfg._d["risk"]["max_total_risk_pct"] = 0      # toplam-maruziyet tavanı bu testte devre dışı (eq=50'de bloklamasın)
+    cfg._d["risk"]["daily_max_loss_pct"] = 0      # günlük kill-switch devre dışı
     learner = Learner(cfg, None)
     from cfs_trader.loop import _utcday   # flatten gerçek UTC gününe yazar; sabit tarih UTC dönümünde kırılır
     day = _utcday()

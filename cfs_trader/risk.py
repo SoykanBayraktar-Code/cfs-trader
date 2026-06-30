@@ -113,9 +113,10 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None, scalp_ok=Fa
     if st["halted"]:
         return GateResult(False, f"gün durduruldu ({st['halt_reason']})")
 
-    # günlük zarar kill-switch (taban = bütçe). daily_max_loss_pct=0 → KAPALI (kullanıcı kaldırdı).
+    # [INFO] Günlük zarar kill-switch (07-01 AUDIT #2): taban = CANLI EQUITY (sizing ile tutarlı; eski sabit
+    # [INFO] cfg.budget=65 bayattı, gerçek kasa ~190 → %6 yanlış tetiklerdi). daily_max_loss_pct=0 → KAPALI.
     if r.get("daily_max_loss_pct", 0):
-        daily_limit = cfg.budget * r["daily_max_loss_pct"] / 100.0
+        daily_limit = equity * r["daily_max_loss_pct"] / 100.0
         if st["realized_pnl"] <= -daily_limit:
             return GateResult(False, f"günlük zarar {st['realized_pnl']:.2f} ≤ -{daily_limit:.2f}", halt=True)
 
@@ -183,6 +184,17 @@ def gate(cfg, store, binance, cand, equity, mark, day, learner=None, scalp_ok=Fa
     sizing, why = size_position(cfg, binance, cand, equity, mark)
     if sizing is None:
         return GateResult(False, f"boyutlandırma: {why}")
+
+    # [INFO] TOPLAM-MARUZİYET TAVANI (07-01 AUDIT #2): açık pozisyonların toplam risk'i + bu yeni işlemin risk'i
+    # [INFO] kasanın max_total_risk_pct'ini AŞIYORSA girişi reddet. Eşzamanlı drawdown'u sınırlar (tek-işlem %1.5
+    # [INFO] + toplam %4 tavan). 0/None → kapalı. risk_usdt giriş-anı değeridir (açık pozisyonlar eski boyutta olabilir).
+    mtr = r.get("max_total_risk_pct", 0) or 0
+    if mtr:
+        open_risk = sum((t["risk_usdt"] or 0) for t in store.open_trades())
+        cap = equity * mtr / 100.0
+        if open_risk + sizing.risk_usdt > cap:
+            return GateResult(False, f"toplam maruziyet tavanı aşılır "
+                              f"(açık {open_risk:.2f} + yeni {sizing.risk_usdt:.2f} > {cap:.2f} USDT)")
 
     # "Kasa müsaitse işlem açabilsin" — gerçek serbest margin yeni pozisyonun margin'ini karşılıyor mu?
     # (dry_run/paper'da atlanır; canlıda gerçek available_usdt'ye bakar; %2 tampon fee/slippage için.)

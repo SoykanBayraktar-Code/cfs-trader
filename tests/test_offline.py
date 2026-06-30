@@ -51,6 +51,10 @@ def main():
     cfg._d["dry_run"] = True       # offline test config.yaml mode/dry_run'dan BAĞIMSIZ — hep paper mantığı
     cfg._d["mode"] = "testnet"
     cfg._d["risk"]["max_concurrent"] = 1   # test config'ten BAĞIMSIZ (canlıda 3 olsa da senaryo 1 pozisyon)
+    # 07-01 AUDIT #2: bu birim-test prod risk tuning'inden BAĞIMSIZ olmalı → margin-cap sizing senaryosunu sabitle
+    cfg._d["risk"]["risk_per_trade_pct"] = 25.0   # sabit taban (prod %1.5 değil; notional margin-tavanına kırpılsın)
+    cfg._d["risk"]["max_total_risk_pct"] = 0      # toplam-maruziyet tavanı bu testte devre dışı
+    cfg._d["risk"]["daily_max_loss_pct"] = 0      # günlük kill-switch devre dışı (consec-loss halt'ı izole test et)
     learner = Learner(cfg, None)  # enabled=False
     db = os.path.join(tempfile.mkdtemp(), "t.db")
     store = Store(db)

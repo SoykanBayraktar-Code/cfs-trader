@@ -31,10 +31,11 @@ dynamic_sizing:
 
 risk:
   leverage: 5
-  risk_per_trade_pct: 25.0          # 50→25 (06-26 #5: varyans azalt; en kötü tek kayıp yarıya, R aynı). dynamic taban
-  max_concurrent: 3               # 3'e çıkarıldı (günlük kill-switch kapalı, taşma riski yok); PULLBACK-MOM'a slot açar
-  daily_max_loss_pct: 0           # 0 = KAPALI (kullanıcı isteğiyle günlük kill-switch kaldırıldı; eyes-open)
-  max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı; TEK kalan günlük backstop)
+  risk_per_trade_pct: 1.5           # 07-01 AUDIT #2: %25→%1.5 (kullanıcı %1-2 kuralı). dynamic_conf_mult ile [0.3-1.0]× ölçeklenir → efektif %0.45-1.5
+  max_total_risk_pct: 4.0         # 07-01 AUDIT #2: TÜM açık pozisyonların toplam risk'i kasanın %4'ünü AŞAMAZ (eşzamanlı drawdown tavanı)
+  max_concurrent: 3               # 3'e çıkarıldı (PULLBACK-MOM'a slot açar); pratikte max_total_risk_pct bağlayıcı sınır
+  daily_max_loss_pct: 6           # 07-01 AUDIT #2: günlük kill-switch GERİ (6% × canlı equity; ~4 tam-SL kaybı → DUR). risk.py equity tabanına bağlı
+  max_consecutive_losses: 3       # üst üste 3 zarar → DUR (5→3 sıkılaştırıldı)
   min_notional_usdt: 5.0          # Binance min emir (exchange_info'dan da teyit edilir; bu yedek)
   max_position_notional_usdt: 500 # 5x * 100; risk.py exchange limitiyle min alır
   max_sl_pct: 6                   # 12→6 (06-26 #3 tavan: backtest 2-5% bandı kârlı, >5-6% kaybeden); SL bundan genişse RED
