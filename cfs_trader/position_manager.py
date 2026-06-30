@@ -88,6 +88,41 @@ def _live_exit_price(binance, t):
     return reason, price
 
 
+def ensure_protective_sl(cfg, binance, store, notifier=None, log=None):
+    """SL-WATCHDOG (AUDIT #5): her açık pozisyonda borsada GERÇEK koruyucu stop var mı doğrula; yoksa DB'deki
+    güncel sl seviyesinden yeniden koy. Trailing cancel→place gap'i, başarısız yerleştirme, restart/manuel
+    edge'lerini yakalar — pozisyon hiç çıplak kalmasın. YALNIZ koruma EKLER (mevcut SL'e dokunmaz). reconcile'dan
+    SONRA çağrılır (yeni kapananlar zaten flatten'lı → just-closed race yok). dry_run'da no-op. Yeniden-konanlar listesi döner."""
+    if cfg.dry_run:
+        return []
+    fixed = []
+    for t in store.open_trades():
+        sym = t["symbol"]
+        try:
+            amt = sum(abs(float(p["positionAmt"])) for p in binance.positions(sym))
+            if amt <= 0:
+                continue  # borsada açık değil → reconcile bir sonraki turda kapatır
+            algos = binance.open_algo_orders(sym)
+            has_sl = any((o.get("orderType") or o.get("type")) == "STOP_MARKET" for o in algos)
+            if has_sl:
+                continue  # koruyucu SL zaten var
+            # KORUMASIZ → DB'deki güncel sl (trailing taşımışsa o seviye) ile yeniden koy
+            exit_side = "SELL" if t["side"] == "LONG" else "BUY"
+            sl_price = t["sl"]
+            res = binance.place_stop_market(sym, exit_side, sl_price, close_position=True)
+            new_id = str(res.get("algoId") or res.get("orderId"))
+            store.update_trade_sl(t["id"], sl_price, sl_order_id=new_id)
+            fixed.append(sym)
+            if log:
+                log(f"   🛡️ SL-watchdog {sym}: borsada koruyucu SL YOKTU → {sl_price}'e yeniden kondu")
+            if notifier:
+                notifier.send(f"🛡️ <b>{sym} {t['side']}</b> koruyucu SL eksikti → {sl_price}'e yeniden kondu (watchdog)")
+        except Exception as e:
+            if log:
+                log(f"   SL-watchdog {sym} hata (yok sayıldı): {e!r}")
+    return fixed
+
+
 def flatten_all(cfg, binance, store, reason, notifier=None):
     """Kill-switch: tüm açık pozisyonları kapat."""
     for t in store.open_trades():

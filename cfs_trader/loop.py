@@ -297,6 +297,11 @@ def poll_tick(ctx):
     closed = position_manager.reconcile(ctx.cfg, ctx.binance, ctx.store, ctx.notifier)
     for sym, reason in closed:
         log(ctx, f"[poll] çıkış {sym} → {reason}")
+    # 3) SL-WATCHDOG (AUDIT #5): hâlâ açık pozisyonda borsada koruyucu SL var mı; yoksa yeniden koy (çıplak kalma)
+    try:
+        position_manager.ensure_protective_sl(ctx.cfg, ctx.binance, ctx.store, ctx.notifier, log=lambda m: log(ctx, m))
+    except Exception as e:
+        log(ctx, f"[poll] SL-watchdog hatası: {e!r}")
 
 
 def run_forever(ctx=None):
