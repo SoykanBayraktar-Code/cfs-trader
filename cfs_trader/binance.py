@@ -253,3 +253,15 @@ class Binance:
 
     def user_trades(self, symbol, limit=10):
         return self._signed("GET", "/fapi/v1/userTrades", {"symbol": symbol, "limit": limit})
+
+    def income(self, symbol=None, start_ms=None, income_type=None, limit=200):
+        """GERÇEK gelir kayıtları (GET /fapi/v1/income) — ground-truth PnL ölçümü için (audit #4).
+        incomeType: REALIZED_PNL / COMMISSION / FUNDING_FEE / ... ; her kayıt {incomeType, income, time, symbol}."""
+        p = {"limit": limit}
+        if symbol:
+            p["symbol"] = symbol
+        if start_ms:
+            p["startTime"] = int(start_ms)
+        if income_type:
+            p["incomeType"] = income_type
+        return self._signed("GET", "/fapi/v1/income", p)

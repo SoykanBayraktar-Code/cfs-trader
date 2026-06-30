@@ -130,6 +130,8 @@ class Store:
             "pnd_phase": "TEXT",          # Pump&Dump fazı (NONE/PUMP_EARLY/PUMP_LATE/DUMPING) — SHADOW
             "pnd_score": "REAL",          # rush-order spike z-skoru — SHADOW
             "pnd_snapshot": "TEXT",       # P&D ham metrik detayı (JSON) — SHADOW
+            "funding_usdt": "REAL",       # AUDIT #4: kapanışta borsadan okunan GERÇEK funding (income FUNDING_FEE); ground-truth ölçüm
+            "pnl_src": "TEXT",            # AUDIT #4: PnL kaynağı — 'income' (gerçek net) | 'tahmin' (fiyat-tabanlı fallback)
         }
         for col, typ in adds.items():
             if col not in have:
@@ -149,11 +151,14 @@ class Store:
         self.db.commit()
         return cur.lastrowid
 
-    def close_trade(self, trade_id, exit_price, exit_reason, pnl_usdt, r_multiple, fees_usdt=0.0):
+    def close_trade(self, trade_id, exit_price, exit_reason, pnl_usdt, r_multiple, fees_usdt=0.0,
+                    funding_usdt=None, pnl_src=None):
+        # AUDIT #4: funding_usdt + pnl_src opsiyonel (geriye-uyumlu) — ground-truth ölçüm için kaydedilir.
         self.db.execute(
             """UPDATE trades SET ts_close=?, status='CLOSED', exit_price=?, exit_reason=?,
-               pnl_usdt=?, r_multiple=?, fees_usdt=? WHERE id=?""",
-            (int(time.time()), exit_price, exit_reason, pnl_usdt, r_multiple, fees_usdt, trade_id),
+               pnl_usdt=?, r_multiple=?, fees_usdt=?, funding_usdt=?, pnl_src=? WHERE id=?""",
+            (int(time.time()), exit_price, exit_reason, pnl_usdt, r_multiple, fees_usdt,
+             funding_usdt, pnl_src, trade_id),
         )
         self.db.commit()
 

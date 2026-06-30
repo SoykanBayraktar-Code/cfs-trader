@@ -206,6 +206,31 @@ def enter(cfg, binance, store, cand, sizing, mark, day):
     return tid
 
 
+def _realized_from_income(binance, sym, since_ts, tries=3, sleep_s=1.0):
+    # [INFO] AUDIT #4 ground-truth: borsa income kayıtlarından (GET /fapi/v1/income) işlemin GERÇEK net'ini hesaplar.
+    # [INFO] net = REALIZED_PNL + COMMISSION + FUNDING_FEE (hepsi işaretli; comm/funding negatif=maliyet). Kapanış kaydı
+    # [INFO] (REALIZED_PNL) borsada hemen oluşmayabilir → has_close False ise kısa retry. Döner:
+    # [INFO] (net, gross_realized, commission, funding, has_close) | None (hiç kayıt yoksa).
+    import time as _t
+    start_ms = int(since_ts * 1000) - 2000   # küçük tampon (giriş komisyonunu da kapsa)
+    inc = None
+    for i in range(tries):
+        try:
+            inc = binance.income(sym, start_ms=start_ms, limit=200)
+        except Exception:
+            inc = None
+        has_close = bool(inc) and any(x.get("incomeType") == "REALIZED_PNL" for x in inc)
+        if has_close or i == tries - 1:
+            break
+        _t.sleep(sleep_s)
+    if not inc:
+        return None
+    g = lambda t: sum(float(x.get("income", 0) or 0) for x in inc if x.get("incomeType") == t)
+    realized, comm, fund = g("REALIZED_PNL"), g("COMMISSION"), g("FUNDING_FEE")
+    has_close = any(x.get("incomeType") == "REALIZED_PNL" for x in inc)
+    return (realized + comm + fund, realized, comm, fund, has_close)
+
+
 def flatten(cfg, binance, store, trade, exit_price, reason, notifier=None):
     """Açık pozisyonu kapat (gerçekte market-close + bekleyen emirleri iptal) ve store'da CLOSED yap.
 
@@ -228,20 +253,37 @@ def flatten(cfg, binance, store, trade, exit_price, reason, notifier=None):
     entry = trade["entry"]
     qty = trade["qty"]
     direction = 1 if trade["side"] == "LONG" else -1
-    pnl = (exit_price - entry) * qty * direction
+    # [INFO] TAHMİNİ PnL (fallback): fiyat-tabanlı, sabit ~%0.05 taker fee, FUNDING YOK. Yalnız income okunamazsa kullanılır.
+    est_pnl = (exit_price - entry) * qty * direction
+    est_fees = (entry + exit_price) * qty * 0.0005
+    pnl, fees, funding, pnl_src = est_pnl, est_fees, None, "tahmin"
+
+    # [INFO] GROUND-TRUTH PnL (AUDIT #4): canlıda borsadan GERÇEK net realize'i oku — REALIZED_PNL + COMMISSION +
+    # [INFO] FUNDING_FEE (funding DAHİL). Kapanış kaydı (REALIZED_PNL) hazırsa onu KULLAN (kesin); değilse tahmine düş.
+    # [INFO] learner/analyst/brain bundan sonra GERÇEK net R üzerinde öğrenir (funding-yoksay zehiri temizlenir).
+    if not cfg.dry_run:
+        try:
+            res = _realized_from_income(binance, sym, trade["ts_open"])
+            if res and res[4]:                 # has_close → REALIZED_PNL kaydı var (kapanış işlendi)
+                net, _gross, comm, fund, _ = res
+                pnl, fees, funding, pnl_src = net, abs(comm), fund, "income"   # comm negatif → pozitif fee gösterimi
+        except Exception:
+            pass
+
     risk = trade["risk_usdt"] or 0
     r_mult = (pnl / risk) if risk else 0.0
-    # taker fee ~%0.05 round-trip yaklaşık
-    fees = (entry + exit_price) * qty * 0.0005
 
-    store.close_trade(trade["id"], exit_price, reason, round(pnl, 4), round(r_mult, 3), round(fees, 4))
+    store.close_trade(trade["id"], exit_price, reason, round(pnl, 4), round(r_mult, 3), round(fees, 4),
+                      funding_usdt=(round(funding, 4) if funding is not None else None), pnl_src=pnl_src)
     st = store.apply_close_to_day(_day_of(trade), pnl)
     store.update_learning(trade["regime"], trade["side"], trade["signal_type"], r_mult)
 
     if notifier:
         ic = "🟢" if pnl > 0 else "🔴"
+        fund_txt = f" | funding {funding:+.3f}" if funding is not None else ""
+        src_txt = "✓gerçek" if pnl_src == "income" else "~tahmin"
         notifier.send(f"{ic} <b>{sym} {trade['side']}</b> {reason}\n"
-                      f"PnL: {pnl:+.3f} USDT ({r_mult:+.2f}R) | fee~{fees:.3f}\n"
+                      f"PnL: {pnl:+.3f} USDT ({r_mult:+.2f}R) [{src_txt}] | fee {fees:.3f}{fund_txt}\n"
                       f"Gün: {st['realized_pnl']:+.2f} | ardışık-zarar: {st['consec_losses']}")
 
     # brain — işlem-sonrası post-mortem (fail-safe; DB'ye not yazar, emir ATMAZ)
