@@ -1,0 +1,16 @@
+[Unit]
+Description=cfs-dashboard — cfs-trader canli izleme dashboard (ayri, salt-okuma)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/cfs-trader
+ExecStart=/usr/bin/python3 /root/cfs-trader/dashboard/server.py
+Restart=on-failure
+RestartSec=10
+# DASHBOARD_TOKEN + Binance anahtarlari secrets.env'den (server.py kendi yukler). Salt-okuma; canli bota DOKUNMAZ.
+# Loglar: journalctl -u cfs-dashboard -f
+
+[Install]
+WantedBy=multi-user.target

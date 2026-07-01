@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<!-- [INFO] cfs-dashboard frontend — tek sayfa, canli poll, Chart.js. __TOKEN__ sunucuda gercek token ile degisir. -->
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>cfs-trader · canlı</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0b0e14;--panel:#141a24;--panel2:#1b2330;--line:#232c3b;--txt:#c9d4e3;--dim:#7688a0;--grn:#26d07c;--red:#ff5470;--yel:#ffcb47;--blu:#4aa3ff;--purp:#b98cff}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--txt);font:13px/1.45 ui-monospace,"SF Mono",Menlo,monospace;padding:14px;max-width:1500px;margin:0 auto}
+h2{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:var(--dim);margin-bottom:9px;font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px;margin-bottom:12px}
+.grid{display:grid;gap:12px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+@media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+/* status bar */
+#status{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:7px 12px;display:flex;flex-direction:column;gap:2px;min-width:96px}
+.chip .k{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.5px}
+.chip .v{font-size:15px;font-weight:700}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block;margin-right:6px}
+.pos{color:var(--grn)}.neg{color:var(--red)}.warn{color:var(--yel)}.mut{color:var(--dim)}
+.badge{font-size:10px;padding:2px 8px;border-radius:20px;font-weight:700}
+.badge.live{background:rgba(38,208,124,.15);color:var(--grn)}
+.badge.paused{background:rgba(255,203,71,.15);color:var(--yel)}
+/* pipeline */
+#pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding-bottom:4px}
+.stage{flex:1;min-width:130px;background:var(--panel2);border:1px solid var(--line);border-radius:9px;padding:11px;position:relative}
+.stage h3{font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--blu);margin-bottom:7px}
+.stage .big{font-size:22px;font-weight:800;line-height:1}
+.stage .sub{font-size:10.5px;color:var(--dim);margin-top:5px;white-space:pre-line}
+.arrow{display:flex;align-items:center;color:var(--line);font-size:20px;padding:0 3px}
+.stage.blocked{border-color:var(--yel);box-shadow:0 0 0 1px rgba(255,203,71,.25) inset}
+.bar{height:6px;background:var(--panel);border-radius:4px;overflow:hidden;margin-top:6px}
+.bar>i{display:block;height:100%;border-radius:4px}
+/* tables */
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{text-align:right;color:var(--dim);font-weight:600;padding:5px 7px;border-bottom:1px solid var(--line);font-size:10px;text-transform:uppercase;letter-spacing:.5px}
+th:first-child,td:first-child{text-align:left}
+td{padding:5px 7px;border-bottom:1px solid rgba(35,44,59,.5)}
+tr:last-child td{border-bottom:none}
+/* feed */
+.feed{max-height:260px;overflow-y:auto}
+.ev{display:flex;gap:8px;padding:4px 0;border-bottom:1px solid rgba(35,44,59,.4);font-size:11.5px;align-items:baseline}
+.ev .t{color:var(--dim);font-size:10px;min-width:44px}
+.ev .sym{font-weight:700;min-width:78px}
+.tag{font-size:9px;padding:1px 6px;border-radius:4px;font-weight:700}
+.tag.enter{background:rgba(38,208,124,.15);color:var(--grn)}
+.tag.reject{background:rgba(118,136,160,.12);color:var(--dim)}
+.tag.veto{background:rgba(255,84,112,.15);color:var(--red)}
+.mini{font-size:10px;color:var(--dim)}
+.cards{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+@media(max-width:900px){.cards{grid-template-columns:repeat(3,1fr)}}
+.card{background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:9px;text-align:center}
+.card .v{font-size:17px;font-weight:800}.card .k{font-size:9px;color:var(--dim);text-transform:uppercase;margin-top:2px}
+.wfilter button{background:var(--panel2);border:1px solid var(--line);color:var(--dim);padding:4px 11px;border-radius:6px;cursor:pointer;font:inherit;font-size:11px}
+.wfilter button.on{background:var(--blu);color:#04121f;border-color:var(--blu);font-weight:700}
+canvas{max-height:230px}
+.foot{color:var(--dim);font-size:10.5px;text-align:center;margin-top:6px}
+details summary{cursor:pointer;color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:1px}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+    <div style="font-size:16px;font-weight:800;letter-spacing:.5px">cfs-trader <span class="mut" style="font-weight:400">· canlı pipeline</span></div>
+    <div class="wfilter" id="wfilter">
+      <button data-w="today" class="on">Bugün</button>
+      <button data-w="7d">7g</button>
+      <button data-w="all">Tümü</button>
+    </div>
+  </div>
+  <div id="status"><span class="mut">yükleniyor…</span></div>
+</div>
+
+<div class="panel">
+  <h2>Pipeline Akışı — scan → tape → gate → giriş → yönetim → çıkış</h2>
+  <div id="pipe"></div>
+</div>
+
+<div class="grid g2">
+  <div class="panel"><h2>Açık Pozisyonlar</h2><div id="positions"><span class="mut">—</span></div></div>
+  <div class="panel"><h2>Risk Rayları</h2><div id="risk"><span class="mut">—</span></div></div>
+</div>
+
+<div class="grid g2">
+  <div class="panel"><h2>Equity / PnL Eğrisi (kümülatif R)</h2><canvas id="curve"></canvas></div>
+  <div class="panel"><h2>Aktivite Akışı</h2><div class="feed" id="feed"><span class="mut">—</span></div></div>
+</div>
+
+<div class="panel"><h2>Kazanma İstatistikleri</h2><div class="cards" id="stats"></div></div>
+
+<div class="grid g3">
+  <div class="panel"><h2>Yön (net R)</h2><canvas id="bySide"></canvas></div>
+  <div class="panel"><h2>Rejim (net R)</h2><canvas id="byRegime"></canvas></div>
+  <div class="panel"><h2>Kaynak (net R)</h2><canvas id="bySource"></canvas></div>
+</div>
+
+<div class="panel"><h2>Son İşlemler (funding dahil gerçek net)</h2><div id="trades"><span class="mut">—</span></div></div>
+
+<div class="panel">
+  <details>
+    <summary>Shadow / Brain metrikleri (karar-yolunda değil, gözlem)</summary>
+    <div id="shadow" style="margin-top:12px"><span class="mut">—</span></div>
+  </details>
+</div>
+
+<div class="foot" id="foot">—</div>
+
+<script>
+const TOK="__TOKEN__", API=p=>`/d/${TOK}/api/${p}`;
+let WINDOW="today";
+const f=(n,d=2)=>n==null?"—":(+n).toFixed(d);
+const sgn=n=>n==null?"mut":(+n>0?"pos":(+n<0?"neg":"mut"));
+const money=n=>n==null?"—":(+n>=0?"+":"")+(+n).toFixed(2);
+const hhmm=ts=>ts?new Date(ts*1000).toLocaleTimeString("tr",{hour:"2-digit",minute:"2-digit"}):"—";
+async function j(p){try{const r=await fetch(API(p));return await r.json();}catch(e){return{_err:String(e)};}}
+
+// ---- A: status bar ----
+async function status(){
+  const s=await j("status"); if(s._err)return;
+  const svcOk=s.service==="active";
+  const kill=s.daily_kill_limit;
+  document.getElementById("status").innerHTML=`
+    <div class="chip"><span class="k">servis</span><span class="v"><span class="dot" style="background:${svcOk?'var(--grn)':'var(--red)'}"></span>${s.service}</span></div>
+    <div class="chip"><span class="k">mod</span><span class="v">${s.paused?'<span class="badge paused">⏸ PAUSED</span>':'<span class="badge live">🟢 LIVE</span>'}</span></div>
+    <div class="chip"><span class="k">equity</span><span class="v">$${f(s.equity)}</span></div>
+    <div class="chip"><span class="k">bugün PnL</span><span class="v ${sgn(s.daily_pnl)}">${money(s.daily_pnl)}</span></div>
+    <div class="chip"><span class="k">kill-switch</span><span class="v mut">${f(s.daily_kill_limit)} <span class="mini">/ %${'6'}</span></span></div>
+    <div class="chip"><span class="k">ardışık zarar</span><span class="v ${s.consec_losses>=s.max_consec?'neg':''}">${s.consec_losses}/${s.max_consec}</span></div>
+    <div class="chip"><span class="k">açık poz</span><span class="v">${s.open_count}/${s.max_concurrent}</span></div>
+    <div class="chip"><span class="k">son karar</span><span class="v mut" style="font-size:12px">${hhmm(s.last_decision_ts)}</span></div>
+    ${s.halted?`<div class="chip"><span class="k warn">HALT</span><span class="v warn" style="font-size:11px">${s.halt_reason||''}</span></div>`:''}`;
+}
+
+// ---- B: pipeline ----
+function stage(title,big,sub,cls="",barPct=null,barColor="var(--blu)"){
+  return `<div class="stage ${cls}"><h3>${title}</h3><div class="big">${big}</div><div class="sub">${sub}</div>${barPct!=null?`<div class="bar"><i style="width:${barPct}%;background:${barColor}"></i></div>`:''}</div>`;
+}
+const arrow=`<div class="arrow">▸</div>`;
+async function pipeline(){
+  const p=await j("pipeline?window="+WINDOW); if(p._err)return;
+  const sc=p.scan||{};
+  const srcTxt=Object.entries(sc.sources||{}).map(([k,v])=>`${k}:${v}`).join("  ")||"—";
+  const g=p.gate.breakdown, gTop=Object.entries(g).filter(e=>e[1]>0).sort((a,b)=>b[1]-a[1]).slice(0,4).map(e=>`${e[0]}:${e[1]}`).join("  ");
+  const tb=p.tape.breakdown;
+  const st=await j("status");
+  const blocked=st.paused;
+  document.getElementById("pipe").innerHTML=
+    stage("① SCAN", sc.candidates!=null?sc.candidates:"—", `${sc.regime||'—'} (${sc.bias||'—'})\n${srcTxt}`)+arrow+
+    stage("② TAPE", p.tape.rejected, `red: VETO ${tb.VETO} · CAUTION ${tb.CAUTION}\nNODATA ${tb.NODATA}`, "", null)+arrow+
+    stage("③ GATE (9 kapı)", p.gate.rejected, `red kırılımı:\n${gTop||'—'}`)+arrow+
+    stage("④ GİRİŞ", p.enter, blocked?"⏸ trading_paused\nyeni giriş DURDURULDU":`${p.abort?('⚠ abort '+p.abort):'maker-first + SL-garanti'}`, blocked?"blocked":"")+arrow+
+    stage("⑤ YÖNETİM", p.manage.trailing_moves, "trailing/BE taşıma\n+ SL-watchdog")+arrow+
+    stage("⑥ ÇIKIŞ", p.exit.closed, `${p.exit.wins}✓ / ${p.exit.closed-p.exit.wins}✗\nground-truth PnL`);
+  document.getElementById("foot").textContent=`son güncelleme ${new Date().toLocaleTimeString("tr")} · pencere: ${WINDOW} · yenileme 5s/15s`;
+}
+
+// ---- C: positions ----
+async function positions(){
+  const d=await j("positions"); if(d._err)return;
+  const el=document.getElementById("positions");
+  if(!d.positions.length){el.innerHTML='<span class="mut">açık pozisyon yok</span>';return;}
+  el.innerHTML=`<table><thead><tr><th>sembol</th><th>yön</th><th>giriş</th><th>fiyat</th><th>SL</th><th>TP</th><th>uPnL</th><th>R</th><th>durum</th><th>süre</th></tr></thead><tbody>${
+    d.positions.map(p=>`<tr><td><b>${p.symbol}</b></td><td class="${p.side==='LONG'?'pos':'neg'}">${p.side}</td><td>${f(p.entry,4)}</td><td>${f(p.mark,4)}</td><td>${f(p.sl,4)}</td><td>${f(p.tp,4)}</td><td class="${sgn(p.upnl)}">${money(p.upnl)}</td><td class="${sgn(p.upnl_r)}">${p.upnl_r==null?'—':(p.upnl_r>0?'+':'')+f(p.upnl_r)}R</td><td class="mini">${p.trail_state}</td><td class="mini">${p.held_min}dk</td></tr>`).join("")}</tbody></table>`;
+}
+
+// ---- E: risk ----
+async function risk(){
+  const r=await j("risk"); if(r._err)return;
+  const capPct=r.total_cap?Math.min(100,100*r.open_risk/r.total_cap):0;
+  const killPct=r.daily_kill?Math.min(100,100*Math.max(0,-r.daily_pnl)/-r.daily_kill):0;
+  document.getElementById("risk").innerHTML=`
+    <div class="grid g3" style="margin-bottom:10px">
+      <div class="card"><div class="v">%${f(r.risk_per_trade_pct,1)}</div><div class="k">işlem riski</div></div>
+      <div class="card"><div class="v">%${f(r.max_total_risk_pct,0)}</div><div class="k">toplam cap</div></div>
+      <div class="card"><div class="v">%${f(r.daily_max_loss_pct,0)}</div><div class="k">kill-switch</div></div>
+    </div>
+    <div class="mini" style="margin:8px 0 3px">toplam maruziyet: <b>$${f(r.open_risk)}</b> / cap $${f(r.total_cap)} (%${f(capPct,0)})</div>
+    <div class="bar"><i style="width:${capPct}%;background:${capPct>85?'var(--red)':'var(--grn)'}"></i></div>
+    <div class="mini" style="margin:10px 0 3px">bugün zarar: <b class="${sgn(r.daily_pnl)}">${money(r.daily_pnl)}</b> / kill $${f(r.daily_kill)} (%${f(killPct,0)})</div>
+    <div class="bar"><i style="width:${killPct}%;background:${killPct>70?'var(--red)':'var(--yel)'}"></i></div>
+    <div class="mini" style="margin-top:10px">açık risk: ${r.open_positions.map(p=>`${p.symbol} $${f(p.risk)}`).join(" · ")||'—'} · kaldıraç ${r.leverage}x · ardışık kesici ${r.max_consecutive_losses}</div>`;
+}
+
+// ---- D: activity feed ----
+async function activity(){
+  const d=await j("activity"); if(d._err)return;
+  document.getElementById("feed").innerHTML=d.decisions.map(e=>{
+    let tag="reject",lbl="RED";
+    if(e.action==="ENTER"){tag="enter";lbl="GİRİŞ";}
+    else if((e.reason||"").includes("VETO")){tag="veto";lbl="VETO";}
+    return `<div class="ev"><span class="t">${hhmm(e.ts)}</span><span class="sym">${e.symbol}</span><span class="tag ${tag}">${lbl}</span><span class="mini">${e.side} · ${(e.reason||'').slice(0,54)}</span></div>`;
+  }).join("");
+}
+
+// ---- charts ----
+let ch={};
+function mkLine(id,labels,data){
+  if(ch[id])ch[id].destroy();
+  ch[id]=new Chart(document.getElementById(id),{type:"line",data:{labels,datasets:[{data,borderColor:"var(--grn)",backgroundColor:"rgba(38,208,124,.08)",borderWidth:2,fill:true,pointRadius:0,tension:.15}]},
+    options:{responsive:true,plugins:{legend:{display:false}},scales:{x:{display:false},y:{grid:{color:"#1b2330"},ticks:{color:"#7688a0"}}}}});
+}
+function mkBar(id,items){
+  if(ch[id])ch[id].destroy();
+  ch[id]=new Chart(document.getElementById(id),{type:"bar",data:{labels:items.map(i=>`${i.key} (${i.n})`),datasets:[{data:items.map(i=>i.net_r),backgroundColor:items.map(i=>i.net_r>=0?"rgba(38,208,124,.7)":"rgba(255,84,112,.7)")}]},
+    options:{indexAxis:"y",responsive:true,plugins:{legend:{display:false},tooltip:{callbacks:{label:c=>`${items[c.dataIndex].net_r}R · %${items[c.dataIndex].win_rate} kazanma`}}},scales:{x:{grid:{color:"#1b2330"},ticks:{color:"#7688a0"}},y:{ticks:{color:"#c9d4e3"}}}}});
+}
+
+// ---- F,G,I: performance ----
+async function performance(){
+  const p=await j("performance?window="+WINDOW); if(p._err)return;
+  mkLine("curve",p.curve.map(c=>hhmm(c.t)),p.curve.map(c=>c.cum_r));
+  mkBar("bySide",p.by_side);mkBar("byRegime",p.by_regime);mkBar("bySource",p.by_source);
+  document.getElementById("stats").innerHTML=[
+    ["işlem",p.n],["kazanma","%"+f(p.win_rate,1)],["net R",(p.net_r>0?'+':'')+f(p.net_r)],
+    ["net PnL","$"+money(p.net_pnl)],["ort R",(p.avg_r>0?'+':'')+f(p.avg_r,3)],["profit factor",p.profit_factor??"—"],
+    ["en iyi","+"+f(p.best_r)+"R"],["en kötü",f(p.worst_r)+"R"],["funding",money(p.funding_sum)],["fee","$"+f(p.fees_sum)]
+  ].map(([k,v])=>`<div class="card"><div class="v ${typeof v==='string'&&(v.includes('-')&&!v.includes('%'))?'neg':''}">${v}</div><div class="k">${k}</div></div>`).join("");
+}
+
+// ---- J: trades ----
+async function trades(){
+  const d=await j("trades"); if(d._err)return;
+  const el=document.getElementById("trades");
+  if(!d.trades.length){el.innerHTML='<span class="mut">kapalı işlem yok</span>';return;}
+  el.innerHTML=`<table><thead><tr><th>saat</th><th>sembol</th><th>yön</th><th>giriş</th><th>çıkış</th><th>R</th><th>PnL</th><th>funding</th><th>kaynak</th><th>çıkış</th></tr></thead><tbody>${
+    d.trades.map(t=>`<tr><td class="mini">${hhmm(t.ts_close)}</td><td><b>${t.symbol}</b></td><td class="${t.side==='LONG'?'pos':'neg'}">${t.side}</td><td>${f(t.entry,4)}</td><td>${f(t.exit_price,4)}</td><td class="${sgn(t.r_multiple)}">${t.r_multiple==null?'—':(t.r_multiple>0?'+':'')+f(t.r_multiple)}</td><td class="${sgn(t.pnl_usdt)}">${money(t.pnl_usdt)}</td><td class="mini ${sgn(t.funding_usdt)}">${t.funding_usdt==null?'—':money(t.funding_usdt)}</td><td class="mini">${t.signal_type||'—'}</td><td class="mini">${t.exit_reason||'—'} ${t.pnl_src==='income'?'✓':'~'}</td></tr>`).join("")}</tbody></table>`;
+}
+
+// ---- K: shadow ----
+async function shadow(){
+  const d=await j("shadow"); if(d._err)return;
+  const g=(title,rows)=>`<div><h2>${title}</h2>${rows||'<span class="mut">—</span>'}</div>`;
+  const learn=d.learning.length?`<table><thead><tr><th>anahtar</th><th>n</th><th>net R</th><th>kazanma</th></tr></thead><tbody>${d.learning.map(l=>`<tr><td class="mini">${l.key}</td><td>${l.n}</td><td class="${sgn(l.net_r)}">${(l.net_r>0?'+':'')+l.net_r}</td><td>%${l.win_rate}</td></tr>`).join("")}</tbody></table>`:"";
+  const brain=d.brain.length?d.brain.map(b=>`${b.decision}: ${b.n} (konv ${b.avg_conf})`).join(" · "):"";
+  const derivs=d.derivs.map(x=>`${x.bias}:${x.n}`).join(" · ");
+  const pnd=d.pnd.map(x=>`${x.phase}:${x.n}`).join(" · ");
+  document.getElementById("shadow").innerHTML=`<div class="grid g2">${g("learner (kaynak beklenti)",learn)}${g("brain pretrade",`<div class="mini">${brain||'—'}</div><h2 style="margin-top:10px">derivs shadow</h2><div class="mini">${derivs||'—'}</div><h2 style="margin-top:10px">P&D shadow</h2><div class="mini">${pnd||'—'}</div>`)}</div>`;
+}
+
+// ---- orchestration ----
+function fast(){status();pipeline();positions();risk();activity();}
+function slow(){performance();trades();shadow();}
+document.querySelectorAll("#wfilter button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll("#wfilter button").forEach(x=>x.classList.remove("on"));
+  b.classList.add("on");WINDOW=b.dataset.w;pipeline();performance();
+});
+fast();slow();
+setInterval(fast,5000);
+setInterval(slow,15000);
+</script>
+</body>
+</html>
