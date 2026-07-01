@@ -42,7 +42,7 @@ risk:
   margin_type: ISOLATED           # KESİNLİKLE isolated — cross YASAK. Set edilemezse işlem AÇILMAZ (kasa+INJ korunur)
 
 signals:
-  trading_paused: true            # 07-01: AUDIT SÜRECİ — canlıda YENİ giriş AÇILMAZ (kullanıcı isteği). Açık pozisyonlar yönetilir. Bitince false yap+restart.
+  trading_paused: false            # 07-01: AUDIT SÜRECİ — canlıda YENİ giriş AÇILMAZ (kullanıcı isteği). Açık pozisyonlar yönetilir. Bitince false yap+restart.
   loop_minutes: 5                 # tarama araligi 10->5 dk (scalp; 06-25)
   poll_seconds: 45                # döngü-arası pozisyon/exit kontrolü
   directions: [LONG, SHORT]       # motordan gelen yönler
@@ -236,6 +236,9 @@ brain:
   breaker:        {max_fails: 3, cooldown_min: 15}
 
 learner:
-  enabled: true                   # AKTİF — ama n<min_samples iken etkisiz (güvenli); 20 örneklemde kötü kombinasyonu kısar
-  min_samples: 20
-  suppress_below_expectancy: -0.10   # (rejim×yön×sinyal-tipi) bu R'nin altındaysa o kombinasyonu kıs
+  # 07-01 YOĞUNLAŞMA (kullanıcı: kanıtlı-pozitif cell'lere yoğunlaş): eşik 20→6 + kesici -0.10→-0.08 → adaptif
+  # negatif-kesici AKTİF. Rejim-uyumlu (yapısal filtrenin izin verdiği) bir cell n≥6'da exp<-0.08 kanıtlarsa OTOMATİK
+  # kesilir → sermaye kanıtlı-kazananlarda (TREND_DOWN|SHORT|FRESH +0.109 vb.) kalır. Pozitif cell'ler _confidence ile boyut-boost.
+  enabled: true                   # AKTİF — n<min_samples iken etkisiz (güvenli); n≥6'da kötü kombinasyonu kısar
+  min_samples: 6                  # 20→6: bir cell'i yargılamak için min kapanan işlem (anlamlı ama tek-cell'e kilitlemez)
+  suppress_below_expectancy: -0.08   # (rejim×yön×sinyal-tipi) exp bu R'nin altındaysa o kombinasyonu KES (kanıtlı-negatif)
